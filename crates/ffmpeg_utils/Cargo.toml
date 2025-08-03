@@ -1,0 +1,12 @@
+[package]
+name = "ffmpeg_utils"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+tokio-util = "0.7.15"
+thiserror = "2.0.12"
+tokio = { version = "1.47.1", features = ["process","time","io-util","macros"] }
+serde = {version="1.0.219",features = ["derive"]}
+serde_json = "1.0.140"
+chrono = "0.4.41"

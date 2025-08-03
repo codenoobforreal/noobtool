@@ -1,0 +1,10 @@
+[workspace]
+resolver = "3"
+members = [
+    "apps/hevc_auto_encode",
+    "crates/ffmpeg_utils",
+    "crates/utils",
+]
+
+[workspace.package]
+edition = "2024"

@@ -1,0 +1,11 @@
+[package]
+name = "hevc_auto_encode"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+tokio-util = "0.7.15"
+tokio = { version = "1.47.1",features=["rt"]}
+ffmpeg_utils = { path = "../../crates/ffmpeg_utils", version = "*", package = "ffmpeg_utils" }
+utils = { path = "../../crates/utils", version = "*", package = "utils" }
+
