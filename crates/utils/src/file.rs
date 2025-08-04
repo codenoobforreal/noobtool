@@ -1,6 +1,7 @@
 use std::{fs, io, path::Path};
 
 // todo: remove?
+#[allow(dead_code)]
 fn is_file_creatable(path: &Path) -> Result<(), String> {
     if path.exists() {
         return Err(format!("file exists: {}", path.display()));

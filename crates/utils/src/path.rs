@@ -23,6 +23,7 @@ pub fn find_video_within_folder<P: AsRef<Path>>(path: P, max_depth: usize) -> Ve
         .collect()
 }
 
+#[allow(unused_variables)]
 pub fn is_root_path<P: AsRef<Path>>(path: P) -> bool {
     #[cfg(windows)]
     {

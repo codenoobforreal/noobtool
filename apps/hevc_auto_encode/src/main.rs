@@ -1,6 +1,7 @@
 use clap::Parser;
 use ffmpeg_utils::process_hevc_encode;
 use std::{fs, path::PathBuf, process};
+use tokio::task::spawn_blocking;
 use tokio_util::sync::CancellationToken;
 use utils::{find_video_within_folder, is_video_path};
 
@@ -48,10 +49,21 @@ async fn main() {
 }
 
 async fn process_encode_tasks(videos: Vec<PathBuf>) {
+    let cancel_token = CancellationToken::new();
+
     for video in videos {
-        match process_hevc_encode(CancellationToken::new(), video.clone()).await {
-            Ok(_) => println!("finish video ({video:?}) hevc encoding"),
-            Err(e) => eprintln!("{e}"),
+        let token_clone = cancel_token.clone();
+        let video_clone = video.clone();
+        let res = spawn_blocking(move || process_hevc_encode(token_clone, video_clone)).await;
+
+        match res {
+            Ok(res_future) => match res_future.await {
+                Ok(_) => println!("{video:?}"),
+                Err(e) => eprintln!("{e}"),
+            },
+            Err(e) => {
+                eprintln!("{e}");
+            }
         }
     }
 }

@@ -69,13 +69,14 @@ impl Encoder {
         }
     }
 
-    // ffmpeg -v error -progress pipe:2 -i input.mp4 -c:v libx265 -x265-params log-level=error -crf 20 -f mp4 -c:a copy output.mp4
+    // ffmpeg -hide_banner -v error -progress pipe:2 -i input.mp4 -c:v libx265 -x265-params log-level=error -crf 20 -f mp4 -c:a copy output.mp4
     fn build_command_args(&self) -> Vec<OsString> {
         let mut args = vec![
+            OsString::from("-hide_banner"),
             OsString::from("-v"),
             OsString::from("error"),
-            OsString::from("-progress"),
-            OsString::from("pipe:2"),
+            // OsString::from("-progress"),
+            // OsString::from("pipe:2"),
             OsString::from("-i"),
             OsString::from(&self.config.input),
             OsString::from("-c:v"),
@@ -93,14 +94,14 @@ impl Encoder {
 
         if self.info.scale_width.is_some() {
             args.splice(
-                10..10,
+                9..9,
                 [OsString::from("-vf"), OsString::from("scale=1920:-2")],
             );
         }
 
         if self.info.scale_height.is_some() {
             args.splice(
-                10..10,
+                9..9,
                 [OsString::from("-vf"), OsString::from("scale=-2:1920")],
             );
         }
