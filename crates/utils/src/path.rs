@@ -2,7 +2,7 @@ use crate::constants::VIDEO_EXTS_SET;
 use path_clean::clean;
 use std::{
     io,
-    path::{Component, Path, PathBuf, Prefix},
+    path::{Path, PathBuf},
 };
 use walkdir::WalkDir;
 
@@ -26,6 +26,7 @@ pub fn find_video_within_folder<P: AsRef<Path>>(path: P, max_depth: usize) -> Ve
 pub fn is_root_path<P: AsRef<Path>>(path: P) -> bool {
     #[cfg(windows)]
     {
+        use std::path::{Component, Prefix};
         let path = path.as_ref();
         let mut components = path.components();
 

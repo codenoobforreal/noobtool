@@ -1,7 +1,7 @@
 pub fn pause_cli() {
     #[cfg(windows)]
-    use std::process::Command;
     {
+        use std::process::Command;
         let _ = Command::new("cmd").args(["/C", "pause"]).status();
     }
 
