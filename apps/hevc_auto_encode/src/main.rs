@@ -1,4 +1,4 @@
-use ffmpeg_utils::{EncodeError, Encoder};
+use ffmpeg_utils::process_hevc_encode;
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -38,21 +38,17 @@ async fn main() {
         process::exit(1);
     }
 
-    if let Err(e) = process_encode_tasks(videos).await {
-        eprintln!("{e}")
-    }
+    process_encode_tasks(videos).await;
 
-    println!("process all encode tasks");
+    println!("complete all hevc encode tasks");
     process::exit(0);
 }
 
-async fn process_encode_tasks(videos: Vec<PathBuf>) -> Result<(), EncodeError> {
+async fn process_encode_tasks(videos: Vec<PathBuf>) {
     for video in videos {
-        match Encoder::new(video, CancellationToken::new()).await {
-            Ok(encoder) => encoder.encode().await?,
+        match process_hevc_encode(CancellationToken::new(), video.clone()).await {
+            Ok(_) => println!("finish video ({video:?}) hevc encoding"),
             Err(e) => eprintln!("{e}"),
         }
     }
-
-    Ok(())
 }

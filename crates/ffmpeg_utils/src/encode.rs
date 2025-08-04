@@ -1,36 +1,72 @@
 use crate::{
-    errors::{EncodeError, FfmpegError, ProcessError},
+    errors::{FfmpegError, ProcessError},
     get_metadata,
+    metadata::MetadataError,
 };
 use chrono::Local;
 use std::{
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
 };
+use thiserror::Error;
 use tokio::{io::AsyncReadExt, process::Command, select};
 use tokio_util::sync::CancellationToken;
 
-pub struct Encoder {
-    input_path: PathBuf,
-    output_path: PathBuf,
+#[derive(Debug, Error)]
+pub enum EncodeError {
+    #[error("Json miss field: {0}")]
+    MissingField(String),
+    #[error("Generate output of {input} failed")]
+    OutputPath { input: String },
+    #[error(transparent)]
+    Process(#[from] ProcessError),
+    #[error(transparent)]
+    Metadata(#[from] MetadataError),
+    #[error(transparent)]
+    Ffmpeg(#[from] FfmpegError),
+}
+
+pub async fn process_hevc_encode(
+    cancel_token: CancellationToken,
+    input: PathBuf,
+) -> Result<(), EncodeError> {
+    let token_clone = cancel_token.clone();
+    select! {
+        _ = token_clone.cancelled() => Err(ProcessError::Canceled)?,
+        res = async {
+          let config = Config::init(input)?;
+          let info = get_required_info(config.input.as_os_str(), cancel_token.clone()).await?;
+          let encoder = Encoder::new(config,cancel_token,info);
+          encoder.run().await
+        } => res,
+    }
+}
+
+struct Config {
+    input: PathBuf,
+    output: PathBuf,
+}
+
+impl Config {
+    fn init(input: PathBuf) -> Result<Self, EncodeError> {
+        let output = generate_output_path(&input)?;
+        Ok(Config { input, output })
+    }
+}
+
+struct Encoder {
+    config: Config,
     cancel_token: CancellationToken,
     info: RequiredInfo,
 }
 
 impl Encoder {
-    pub async fn new(
-        video_path: PathBuf,
-        cancel_token: CancellationToken,
-    ) -> Result<Self, EncodeError> {
-        let output_path = generate_output_path(&video_path)?;
-        let required_info = get_required_info(video_path.as_os_str(), cancel_token.clone()).await?;
-
-        Ok(Self {
-            input_path: video_path,
-            output_path,
+    fn new(config: Config, cancel_token: CancellationToken, info: RequiredInfo) -> Self {
+        Self {
+            config,
             cancel_token,
-            info: required_info,
-        })
+            info,
+        }
     }
 
     // ffmpeg -v error -progress pipe:2 -i input.mp4 -c:v libx265 -x265-params log-level=error -crf 20 -f mp4 -c:a copy output.mp4
@@ -41,7 +77,7 @@ impl Encoder {
             OsString::from("-progress"),
             OsString::from("pipe:2"),
             OsString::from("-i"),
-            OsString::from(&self.input_path),
+            OsString::from(&self.config.input),
             OsString::from("-c:v"),
             OsString::from("libx265"),
             OsString::from("-x265-params"),
@@ -52,7 +88,7 @@ impl Encoder {
             OsString::from("mp4"),
             OsString::from("-c:a"),
             OsString::from("copy"),
-            OsString::from(&self.output_path),
+            OsString::from(&self.config.output),
         ];
 
         if self.info.scale_width.is_some() {
@@ -72,14 +108,14 @@ impl Encoder {
         args
     }
 
-    pub async fn encode(&self) -> Result<(), EncodeError> {
+    async fn run(&self) -> Result<(), EncodeError> {
         let args = self.build_command_args();
 
         let mut child = Command::new("ffmpeg")
             .args(args)
             .stderr(std::process::Stdio::piped())
             .spawn()
-            .map_err(|e| EncodeError::Process(ProcessError::Spawn(e.to_string())))?;
+            .map_err(ProcessError::Spawn)?;
 
         let stderr = child.stderr.take();
         let mut error_str = String::new();
@@ -87,8 +123,8 @@ impl Encoder {
         select! {
             _ = self.cancel_token.cancelled() => {
                 match child.kill().await {
-                    Ok(()) => Err(EncodeError::Process(ProcessError::Canceled)),
-                    Err(e) => Err(EncodeError::Process(ProcessError::Kill(e.to_string()))),
+                    Ok(()) => Err(ProcessError::Canceled)?,
+                    Err(e) => Err(ProcessError::Kill(e))?,
                 }
             }
             res = child.wait() => {
@@ -97,8 +133,8 @@ impl Encoder {
                 }
                 match res {
                     Ok(status) if status.success() => Ok(()),
-                    Ok(_) => Err(EncodeError::Ffmpeg(FfmpegError::Inner(error_str))),
-                    Err(e) => Err(EncodeError::Process(ProcessError::ExitStatus(e.to_string()))),
+                    Ok(_) => Err(FfmpegError::Inner(error_str))?,
+                    Err(e) => Err(ProcessError::ExitStatus(e))?,
                 }
             }
         }
@@ -151,8 +187,8 @@ fn generate_output_path(video: &Path) -> Result<PathBuf, EncodeError> {
     let stem = video
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
-        .ok_or_else(|| {
-            EncodeError::OutputPath(format!("{}: invalid file name", video.display()))
+        .ok_or_else(|| EncodeError::OutputPath {
+            input: video.to_string_lossy().into_owned(),
         })?;
 
     let new_filename = format!("{stem}-{}.mp4", Local::now().format("%y%m%d%H%M%S"));

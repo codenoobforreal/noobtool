@@ -11,6 +11,7 @@ pub fn find_video_within_folder<P: AsRef<Path>>(path: P, max_depth: usize) -> Ve
         .max_depth(max_depth)
         .into_iter()
         .filter_map(|r| {
+            // note: r.ok() discard error
             r.ok().and_then(|dir| {
                 if dir.file_type().is_file() && is_video_path(dir.path()) {
                     Some(dir.into_path())

@@ -1,11 +1,22 @@
-use crate::errors::{FfprobeError, MetadataError, ProcessError};
+use crate::errors::{FfprobeError, ProcessError};
 use serde::{Deserialize, Deserializer};
 use std::{
     ffi::{OsStr, OsString},
     process::Stdio,
 };
+use thiserror::Error;
 use tokio::{io::AsyncReadExt, process::Command, select};
 use tokio_util::sync::CancellationToken;
+
+#[derive(Debug, Error)]
+pub enum MetadataError {
+    #[error("Parse json error: {0}")]
+    ParseJson(String),
+    #[error(transparent)]
+    Process(#[from] ProcessError),
+    #[error(transparent)]
+    Ffprobe(#[from] FfprobeError),
+}
 
 pub async fn get_metadata(
     video_path: &OsStr,
@@ -27,7 +38,7 @@ pub async fn get_metadata(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| ProcessError::Spawn(e.to_string()))?;
+        .map_err(ProcessError::Spawn)?;
 
     let stdout = child_process.stdout.take();
     let stderr = child_process.stderr.take();
@@ -37,8 +48,8 @@ pub async fn get_metadata(
     select! {
         _ = cancel_token.cancelled() => {
             match child_process.kill().await {
-              Ok(_) => Err(MetadataError::Process(ProcessError::Canceled)),
-              Err(e) => Err(MetadataError::Process(ProcessError::Kill(e.to_string()))),
+              Ok(_) => Err(ProcessError::Canceled)?,
+              Err(e) => Err(ProcessError::Kill(e))?,
             }
         }
         status = child_process.wait() => {
@@ -55,9 +66,9 @@ pub async fn get_metadata(
                 if let Some(mut pipe) = stderr {
                   pipe.read_to_string(&mut err_str).await.ok();
                 }
-                Err(MetadataError::Ffprobe(FfprobeError::Inner(err_str)))
+                Err(FfprobeError::Inner(err_str))?
               }
-              Err(e) => Err(MetadataError::Process(ProcessError::ExitStatus(e.to_string()))),
+              Err(e) => Err(ProcessError::ExitStatus(e))?,
             }
         }
     }
