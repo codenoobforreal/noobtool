@@ -8,4 +8,5 @@ tokio-util = "0.7.15"
 tokio = { version = "1.47.1",features=["rt"]}
 ffmpeg_utils = { path = "../../crates/ffmpeg_utils", version = "*", package = "ffmpeg_utils" }
 utils = { path = "../../crates/utils", version = "*", package = "utils" }
+clap = { version = "4.5.42", features = ["derive"] }
 

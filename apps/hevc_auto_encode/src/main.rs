@@ -1,46 +1,49 @@
+use clap::Parser;
 use ffmpeg_utils::process_hevc_encode;
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-    process,
-};
+use std::{fs, path::PathBuf, process};
 use tokio_util::sync::CancellationToken;
-use utils::{find_video_within_folder, is_root_path, is_video_path};
+use utils::{find_video_within_folder, is_video_path};
+
+#[derive(Parser)]
+#[command(about = "Batch HEVC video encoding", long_about = None)]
+struct Cli {
+    #[arg(
+        short,
+        long,
+        num_args = 1..,
+        long_help = "video inputs, can be file and folder path seprated by space"
+    )]
+    inputs: Vec<String>,
+    #[arg(short, long, default_value_t = 1, help = "folder recursive depth")]
+    depth: usize,
+}
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
+    let cli = Cli::parse();
 
-    if args.is_empty() {
-        eprintln!("no path found");
-        process::exit(1);
-    }
+    let mut videos = Vec::with_capacity(cli.inputs.len());
 
-    let mut videos = Vec::with_capacity(args.len());
-
-    for arg in args {
-        let path = Path::new(&arg);
-        if !is_root_path(path) {
-            match fs::symlink_metadata(path).ok() {
-                Some(meta) if meta.is_dir() => {
-                    videos.extend(find_video_within_folder(path, 3));
-                }
-                Some(meta) if meta.is_file() && is_video_path(path) => {
-                    videos.push(PathBuf::from(arg));
-                }
-                _ => {}
+    for input in cli.inputs {
+        match fs::symlink_metadata(&input).ok() {
+            Some(meta) if meta.is_dir() => {
+                videos.extend(find_video_within_folder(input, cli.depth));
             }
+            Some(meta) if meta.is_file() && is_video_path(&input) => {
+                videos.push(PathBuf::from(input));
+            }
+            _ => {}
         }
     }
 
     if videos.is_empty() {
-        eprintln!("no video found");
+        eprintln!("no video found in all your inputs");
         process::exit(1);
     }
 
     process_encode_tasks(videos).await;
 
-    println!("complete all hevc encode tasks");
+    println!("complete all encoding tasks");
     process::exit(0);
 }
 
