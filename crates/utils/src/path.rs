@@ -23,24 +23,30 @@ pub fn find_video_within_folder<P: AsRef<Path>>(path: P, max_depth: usize) -> Ve
         .collect()
 }
 
-#[cfg(windows)]
 pub fn is_root_path<P: AsRef<Path>>(path: P) -> bool {
-    let path = path.as_ref();
-    let mut components = path.components();
+    #[cfg(windows)]
+    {
+        let path = path.as_ref();
+        let mut components = path.components();
 
-    let is_drive = matches!(
-        components.next(),
-        Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_))
-    );
+        let is_drive = matches!(
+            components.next(),
+            Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_))
+        );
 
-    if !is_drive {
-        return false;
+        if !is_drive {
+            return false;
+        }
+
+        match components.next() {
+            None => true,                                            // C:
+            Some(Component::RootDir) => components.next().is_none(), // C:\ or C:\\
+            _ => false,
+        }
     }
-
-    match components.next() {
-        None => true,                                            // C:
-        Some(Component::RootDir) => components.next().is_none(), // C:\ or C:\\
-        _ => false,
+    #[cfg(not(windows))]
+    {
+        todo!()
     }
 }
 
