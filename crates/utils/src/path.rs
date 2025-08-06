@@ -6,21 +6,45 @@ use std::{
 };
 use walkdir::WalkDir;
 
-pub fn find_video_within_folder<P: AsRef<Path>>(path: P, max_depth: usize) -> Vec<PathBuf> {
-    WalkDir::new(path)
-        .max_depth(max_depth)
-        .into_iter()
-        .filter_map(|r| {
-            // note: r.ok() discard error
-            r.ok().and_then(|dir| {
-                if dir.file_type().is_file() && is_video_path(dir.path()) {
-                    Some(dir.into_path())
-                } else {
-                    None
+pub fn find_videos_within_folder<P: AsRef<Path>>(
+    path: P,
+    max_depth: usize,
+) -> (Vec<PathBuf>, Vec<walkdir::Error>) {
+    let mut videos = Vec::new();
+    let mut errors = Vec::new();
+
+    for entry in WalkDir::new(path).max_depth(max_depth).into_iter() {
+        match entry {
+            Ok(entry) => {
+                if entry.file_type().is_file() && is_video_path(entry.path()) {
+                    videos.push(entry.into_path());
                 }
-            })
-        })
-        .collect()
+            }
+            Err(e) => errors.push(e),
+        }
+    }
+
+    (videos, errors)
+}
+
+pub fn handle_walkdir_error(error: walkdir::Error) -> (String, &'static str) {
+    let path = error
+        .path()
+        .unwrap_or(Path::new(" "))
+        .to_string_lossy()
+        .into_owned();
+
+    let cause = if let Some(inner) = error.io_error() {
+        match inner.kind() {
+            io::ErrorKind::InvalidData => "contains invalid data",
+            io::ErrorKind::PermissionDenied => "no permission",
+            _ => "unexpected error",
+        }
+    } else {
+        "unexpected error"
+    };
+
+    (path, cause)
 }
 
 #[allow(unused_variables)]

@@ -1,12 +1,12 @@
 use clap::Parser;
 use ffmpeg_utils::process_hevc_encode;
-use std::{fs, path::PathBuf, process};
+use std::{io::ErrorKind, path::PathBuf, process};
 use tokio::task::spawn_blocking;
 use tokio_util::sync::CancellationToken;
-use utils::{find_video_within_folder, is_video_path};
+use utils::{handle_walkdir_error, scan_video_from_path};
 
 #[derive(Parser)]
-#[command(about = "Batch HEVC video encoding", long_about = None)]
+#[command(about = "Batch HEVC video encoding", long_about = None,next_line_help = true)]
 struct Cli {
     #[arg(
         short,
@@ -14,7 +14,7 @@ struct Cli {
         num_args = 1..,
         long_help = "video inputs, can be file and folder path seprated by space"
     )]
-    inputs: Vec<String>,
+    inputs: Vec<PathBuf>,
     #[arg(short, long, default_value_t = 1, help = "folder recursive depth")]
     depth: usize,
 }
@@ -23,28 +23,21 @@ struct Cli {
 async fn main() {
     let cli = Cli::parse();
 
-    let mut videos = Vec::with_capacity(cli.inputs.len());
+    let inputs_len = cli.inputs.len();
 
-    for input in cli.inputs {
-        match fs::symlink_metadata(&input).ok() {
-            Some(meta) if meta.is_dir() => {
-                videos.extend(find_video_within_folder(input, cli.depth));
-            }
-            Some(meta) if meta.is_file() && is_video_path(&input) => {
-                videos.push(PathBuf::from(input));
-            }
-            _ => {}
-        }
-    }
+    println!("[info] enter {inputs_len} paths");
+
+    let videos = scan_videos(cli.inputs, cli.depth);
 
     if videos.is_empty() {
-        eprintln!("no video found in all your inputs");
+        eprintln!("[warnning] no video found in all your inputs");
         process::exit(1);
     }
 
+    println!("[info] found {} videos in total", videos.len());
+
     process_encode_tasks(videos).await;
 
-    println!("complete all encoding tasks");
     process::exit(0);
 }
 
@@ -52,18 +45,49 @@ async fn process_encode_tasks(videos: Vec<PathBuf>) {
     let cancel_token = CancellationToken::new();
 
     for video in videos {
+        let display_path = video.display();
         let token_clone = cancel_token.clone();
         let video_clone = video.clone();
         let res = spawn_blocking(move || process_hevc_encode(token_clone, video_clone)).await;
 
         match res {
             Ok(res_future) => match res_future.await {
-                Ok(_) => println!("{video:?}"),
-                Err(e) => eprintln!("{e}"),
+                Ok(_) => println!("[info] finish encoding: {display_path}"),
+                Err(e) => eprintln!("[error] {e}"),
             },
             Err(e) => {
-                eprintln!("{e}");
+                eprintln!("[error] {e}");
             }
         }
     }
+}
+
+fn scan_videos(inputs: Vec<PathBuf>, depth: usize) -> Vec<PathBuf> {
+    let mut videos = Vec::with_capacity(inputs.len());
+
+    for input in inputs {
+        let display_path = input.display();
+        match scan_video_from_path(&input, depth) {
+            Ok((s, f)) => {
+                videos.extend(s);
+                for error in f {
+                    let (error_path, cause) = handle_walkdir_error(error);
+                    eprintln!("[warning] access {error_path} failed: {cause}");
+                }
+            }
+            Err(e) => match e.kind() {
+                ErrorKind::NotFound => {
+                    eprintln!("[warnning] {display_path} not found");
+                }
+                ErrorKind::PermissionDenied => {
+                    eprintln!("[warnning] {display_path} no permission");
+                }
+                _ => {
+                    eprintln!("[warnning] {display_path} unknow error: {e}")
+                }
+            },
+        }
+    }
+
+    videos
 }

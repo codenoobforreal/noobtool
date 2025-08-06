@@ -107,7 +107,9 @@ impl Generator {
         let spec = &self.spec;
         let mut args = vec![
             OsString::from("-v"),
-            OsString::from("fatal"),
+            OsString::from("error"),
+            // OsString::from("-progress"),
+            // OsString::from("pipe:2"),
             OsString::from("-ss"),
             OsString::from(format!("{:.2}", spec.start_time)),
             OsString::from("-to"),
@@ -118,7 +120,7 @@ impl Generator {
             OsString::from("0:v"),
             OsString::from("-vf"),
             OsString::from(format!(
-                "fps=1/{:.2},scale={:.2}:{:.2},tile={}x{}",
+                "select='eq(pict_type,I)',fps=1/{:.2},scale={:.2}:{:.2},tile={}x{}",
                 spec.interval(),
                 spec.width,
                 spec.height,
@@ -226,6 +228,7 @@ impl Spec {
         };
 
         let (rows, cols, cut_percent, skip_frame) = match video_duration {
+            // 4 grid needs 60s for each (GOP) so it is 4*60=240
             d if d <= 240.0 => (2, 2, 0.05, false),
             d if d <= 600.0 => (3, 2, 0.05, true),
             d if d <= 1800.0 => (3, 3, 0.04, true),

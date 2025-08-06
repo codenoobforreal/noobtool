@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
-    "apps/hevc_auto_encode",
+    "apps/hevc_auto_encode", "apps/video_thumbnail",
     "crates/ffmpeg_utils",
     "crates/utils",
 ]

@@ -1,25 +1,28 @@
-use std::{fs, io, path::Path};
+use crate::{find_videos_within_folder, is_video_path, resolve_to_absolute};
+use std::{
+    fs::symlink_metadata,
+    io,
+    path::{Path, PathBuf},
+};
 
-// todo: remove?
-#[allow(dead_code)]
-fn is_file_creatable(path: &Path) -> Result<(), String> {
-    if path.exists() {
-        return Err(format!("file exists: {}", path.display()));
-    }
+pub fn scan_video_from_path(
+    path: impl AsRef<Path>,
+    depth: usize,
+) -> Result<(Vec<PathBuf>, Vec<walkdir::Error>), io::Error> {
+    let abs_path = resolve_to_absolute(&path)?;
 
-    let parent = path.parent().ok_or("no parent path")?;
+    let meta = symlink_metadata(&abs_path)?;
 
-    match fs::metadata(parent) {
-        Ok(metadata) => {
-            if metadata.permissions().readonly() {
-                Err(format!("no write permission: {}", parent.display()))
+    match () {
+        _ if meta.is_dir() => Ok(find_videos_within_folder(&abs_path, depth)),
+        _ if meta.is_file() => {
+            let videos = if is_video_path(&abs_path) {
+                vec![abs_path]
             } else {
-                Ok(())
-            }
+                vec![]
+            };
+            Ok((videos, vec![]))
         }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            Err(format!("parent path doesn't exist: {}", parent.display()))
-        }
-        Err(e) => Err(format!("{e}")),
+        _ => Ok((vec![], vec![])),
     }
 }
