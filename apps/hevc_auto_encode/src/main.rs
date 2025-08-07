@@ -30,7 +30,7 @@ async fn main() {
     let videos = scan_videos(cli.inputs, cli.depth);
 
     if videos.is_empty() {
-        eprintln!("[warnning] no video found in all your inputs");
+        eprintln!("[error] no video found in all your inputs");
         process::exit(1);
     }
 
