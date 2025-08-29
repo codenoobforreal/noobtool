@@ -18,21 +18,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v5
 
-      - name: Install Rust toolchain
+      - name: Install rustup
         uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-test-
+          shared-key: "release-cache"
 
       - name: Run cargo test for all apps
         run: cargo test --workspace --locked
@@ -43,37 +37,43 @@ jobs:
     needs: test
     strategy:
       matrix:
+        # https://doc.rust-lang.org/nightly/rustc/platform-support.html#tier-1-with-host-tools
         platform:
+          - name: linux-arm64
+            runner: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            bin_suffix: ""
+            archive_type: tar.gz
+
           - name: linux-x86_64
             runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             bin_suffix: ""
             archive_type: tar.gz
 
-          - name: linux-arm64
+          - name: linux-i686_32
             runner: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
+            target: i686-unknown-linux-gnu
             bin_suffix: ""
             archive_type: tar.gz
-            use_cross: true
 
-          - name: windows-x86_64
+          - name: windows-i686_32
+            runner: windows-latest
+            target: i686-pc-windows-msvc
+            bin_suffix: .exe
+            archive_type: zip
+
+          - name: windows-x86_64-MinGW
+            runner: windows-latest
+            target: x86_64-pc-windows-gnu
+            bin_suffix: .exe
+            archive_type: zip
+
+          - name: windows-x86_64-MSVC
             runner: windows-latest
             target: x86_64-pc-windows-msvc
             bin_suffix: .exe
             archive_type: zip
-
-          - name: windows-arm64
-            runner: windows-latest
-            target: aarch64-pc-windows-msvc
-            bin_suffix: .exe
-            archive_type: zip
-
-          - name: macos-x86_64
-            runner: macos-latest
-            target: x86_64-apple-darwin
-            bin_suffix: ""
-            archive_type: tar.gz
 
           - name: macos-arm64
             runner: macos-latest
@@ -81,24 +81,20 @@ jobs:
             bin_suffix: ""
             archive_type: tar.gz
 
+          # tier 2 support
+          - name: macos-x86_64
+            runner: macos-latest
+            target: x86_64-apple-darwin
+            bin_suffix: ""
+            archive_type: tar.gz
+
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install Rust toolchain
+        uses: actions/checkout@v5
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform.target }}
-          toolchain: stable
-
-      - name: Install cross (for Linux cross-compilation)
-        if: matrix.platform.use_cross == 'true'
-        run: |
-          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-          cargo binstall --no-confirm cross
-        shell: bash
 
       - name: Install compression tools
         run: |
@@ -112,19 +108,10 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ runner.os }}-cargo-${{ matrix.platform.target }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-${{ matrix.platform.target }}-
-            ${{ runner.os }}-cargo-
+          shared-key: "release-cache"
 
       - name: Build binary
-        run: |
-          if [ "${{ matrix.platform.use_cross }}" = "true" ]; then
-            cross build --verbose --locked --release --target ${{ matrix.platform.target }}
-          else
-            cargo build --verbose --locked --release --target ${{ matrix.platform.target }}
-          fi
-        shell: bash
+        run: cargo build --locked --release --target ${{ matrix.platform.target }}
 
       - name: Move and rename binaries
         shell: bash
@@ -166,10 +153,10 @@ jobs:
           done
 
 
-          echo "ASSETS=$(echo ${ARCHIVE_FILES} | jq -R -s -c 'split(" ")' )" >> $GITHUB_ENV
+          # echo "ASSETS=$(echo ${ARCHIVE_FILES} | jq -R -s -c 'split(" ")' )" >> $GITHUB_ENV
 
-        env:
-          ARCHIVE_FILES: ""
+        # env:
+        #   ARCHIVE_FILES: ""
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -181,13 +168,11 @@ jobs:
           compression-level: 9
 
       - name: Release binaries (on tag push)
-        # if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v1
+        # if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             hevc_batch_encode-${{ matrix.platform.name }}.${{ matrix.platform.archive_type }}
             video_thumbnail-${{ matrix.platform.name }}.${{ matrix.platform.archive_type }}
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
