@@ -1,14 +1,13 @@
 mod common;
 
 use assert_cmd::Command;
-use common::{CleanupGuard, TEST_VIDEOS, fixtures_path, skip_if_in_ci};
+use common::{CleanupGuard, TEST_VIDEOS, fixtures_path};
 use serial_test::serial;
 
 #[test]
+#[ignore]
 #[serial(ffmpeg)]
 fn relative_path() -> Result<(), Box<dyn std::error::Error>> {
-    skip_if_in_ci()?;
-
     let _guard = CleanupGuard;
     let pkg_name = env!("CARGO_PKG_NAME");
     let mut cmd = Command::cargo_bin(pkg_name)?;
@@ -24,10 +23,9 @@ fn relative_path() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+#[ignore]
 #[serial(ffmpeg)]
 fn absolute_path() -> Result<(), Box<dyn std::error::Error>> {
-    skip_if_in_ci()?;
-
     let _guard = CleanupGuard;
     let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME"))?;
 

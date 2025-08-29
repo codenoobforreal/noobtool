@@ -36,13 +36,6 @@ fn delete_except_files(folder_path: impl AsRef<Path>, keep_files: &[&str]) -> io
     Ok(())
 }
 
-pub fn skip_if_in_ci() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var("CI").is_ok() {
-        return Ok(());
-    }
-    Ok(())
-}
-
 pub fn fixtures_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures")
 }
