@@ -98,19 +98,20 @@ jobs:
         with:
           targets: ${{ matrix.platform.target }}
 
-      - name: Install compression tools
-        run: |
-          if [ "${{ matrix.platform.runner }}" = "ubuntu-latest" ]; then
-            sudo apt-get update && sudo apt-get install -y zip tar
-          elif [ "${{ matrix.platform.runner }}" = "windows-latest" ]; then
-            choco install 7zip -y
-          fi
-        shell: bash
-
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "release-cache"
+
+      - name: Add multiarch support and install OpenSSL for non-native Linux targets
+        if: matrix.platform.runner == 'ubuntu-latest' && matrix.platform.target == 'i686-unknown-linux-gnu'
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev:i386
+          find /usr -name "libssl.so*" -o -name "libssl.a" 2>/dev/null | grep i386
+          ls -la /usr/lib/i386-linux-gnu/libssl* || echo "Lib not found!"
+          ls -la /usr/include/i386-linux-gnu/openssl/ || echo "Include dir not found!"
 
       - name: Build binary
         run: cargo build --locked --release --target ${{ matrix.platform.target }}
