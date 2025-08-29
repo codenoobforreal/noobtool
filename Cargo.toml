@@ -3,7 +3,7 @@ resolver = "3"
 members = [
   "apps/hevc_batch_encode",
   "apps/video_thumbnail",
-  "apps/ftc",
+  # "apps/ftc",
   "crates/utils",
 ]
 
