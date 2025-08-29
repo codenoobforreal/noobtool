@@ -37,9 +37,7 @@ fn delete_except_files(folder_path: impl AsRef<Path>, keep_files: &[&str]) -> io
 }
 
 pub fn skip_if_in_ci() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var("CI").as_deref() == Ok("true") {
-        // 可选择性地打印一条跳过信息
-        // println!("Skipping test in CI environment");
+    if std::env::var("CI").is_ok() {
         return Ok(());
     }
     Ok(())
