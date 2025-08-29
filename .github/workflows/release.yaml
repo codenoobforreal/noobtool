@@ -103,7 +103,7 @@ jobs:
         with:
           shared-key: "release-cache"
 
-      - name: Add multiarch support and install OpenSSL for non-native Linux targets
+      - name: Add OpenSSL for i686-unknown-linux-gnu
         if: matrix.platform.runner == 'ubuntu-latest' && matrix.platform.target == 'i686-unknown-linux-gnu'
         run: |
           sudo dpkg --add-architecture i386
@@ -112,6 +112,16 @@ jobs:
           find /usr -name "libssl.so*" -o -name "libssl.a" 2>/dev/null | grep i386
           ls -la /usr/lib/i386-linux-gnu/libssl* || echo "Lib not found!"
           ls -la /usr/include/i386-linux-gnu/openssl/ || echo "Include dir not found!"
+
+      - name: Add OpenSSL for aarch64-unknown-linux-gnu
+        if: matrix.platform.runner == 'ubuntu-latest' && matrix.platform.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev:arm64
+          find /usr -name "libssl.so*" -o -name "libssl.a" 2>/dev/null | grep arm64
+          ls -la /usr/lib/arm64-linux-gnu/libssl* || echo "Lib not found!"
+          ls -la /usr/include/arm64-linux-gnu/openssl/ || echo "Include dir not found!"
 
       - name: Build binary
         run: cargo build --locked --release --target ${{ matrix.platform.target }}
