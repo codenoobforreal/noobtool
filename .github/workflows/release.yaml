@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*.*.*" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+  CI: true
+  PROJECT_NAME: noobtool
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-
+
+      - name: Run cargo test for all apps
+        run: cargo test --verbose --workspace --locked
+
+  build:
+    name: Build and Package - ${{ matrix.platform.name }}
+    runs-on: ${{ matrix.platform.runner }}
+    needs: test
+    strategy:
+      matrix:
+        platform:
+          - name: linux-x86_64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bin_suffix: ""
+            archive_type: tar.gz
+
+          - name: linux-arm64
+            runner: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            bin_suffix: ""
+            archive_type: tar.gz
+            use_cross: true
+
+          - name: windows-x86_64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin_suffix: .exe
+            archive_type: zip
+
+          - name: windows-arm64
+            runner: windows-latest
+            target: aarch64-pc-windows-msvc
+            bin_suffix: .exe
+            archive_type: zip
+
+          - name: macos-x86_64
+            runner: macos-latest
+            target: x86_64-apple-darwin
+            bin_suffix: ""
+            archive_type: tar.gz
+
+          - name: macos-arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+            bin_suffix: ""
+            archive_type: tar.gz
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+          toolchain: stable
+
+      - name: Install cross (for Linux cross-compilation)
+        if: matrix.platform.use_cross == 'true'
+        run: |
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall --no-confirm cross
+        shell: bash
+
+      - name: Install compression tools
+        run: |
+          if [ "${{ matrix.platform.runner }}" = "ubuntu-latest" ]; then
+            sudo apt-get update && sudo apt-get install -y zip tar
+          elif [ "${{ matrix.platform.runner }}" = "windows-latest" ]; then
+            choco install 7zip -y
+          fi
+        shell: bash
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}-cargo-${{ matrix.platform.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.platform.target }}-
+            ${{ runner.os }}-cargo-
+
+      - name: Build binary
+        run: |
+          if [ "${{ matrix.platform.use_cross }}" = "true" ]; then
+            cross build --verbose --locked --release --target ${{ matrix.platform.target }}
+          else
+            cargo build --verbose --locked --release --target ${{ matrix.platform.target }}
+          fi
+        shell: bash
+
+      - name: Move and rename binaries
+        shell: bash
+        run: |
+          BINARIES=("hevc_batch_encode" "video_thumbnail")
+          for bin_name in "${BINARIES}"; do
+            BIN_OUTPUT="target/${{ matrix.platform.target }}/release/${bin_name}${{ matrix.platform.bin_suffix }}"
+            BIN_RELEASE="${bin_name}-${{ matrix.platform.name }}${{ matrix.platform.bin_suffix }}"
+            if [ -f "${BIN_OUTPUT}" ]; then
+              mv "${BIN_OUTPUT}" "./${BIN_RELEASE}"
+              echo "finished: ${BIN_RELEASE}"
+            else
+              echo "warnning: can't find binary ${BIN_OUTPUT}"
+              exit 1
+            fi
+          done
+
+      - name: Create archives
+        shell: bash
+        run: |
+          BINARIES=("hevc_batch_encode" "video_thumbnail")
+          ARCHIVE_FILES=()
+          for bin_name in "${BINARIES}"; do
+            BIN_FILE="${bin_name}-${{ matrix.platform.name }}${{ matrix.platform.bin_suffix }}"
+            ARCHIVE_NAME="${bin_name}-${{ matrix.platform.name }}.${{ matrix.platform.archive_type }}"
+
+            if [ -f "./${BIN_FILE}" ]; then
+              if [ "${{ matrix.platform.archive_type }}" = "zip" ]; then
+                7z a "${ARCHIVE_NAME}" "./${BIN_FILE}"
+              else
+                tar -czf "${ARCHIVE_NAME}" "./${BIN_FILE}"
+              fi
+              ARCHIVE_FILES+=("${ARCHIVE_NAME}")
+              echo "created archive: ${ARCHIVE_NAME}"
+            else
+              echo "error: no file found ./${BIN_FILE}"
+              exit 1
+            fi
+          done
+
+
+          echo "ASSETS=$(echo ${ARCHIVE_FILES} | jq -R -s -c 'split(" ")' )" >> $GITHUB_ENV
+
+        env:
+          ARCHIVE_FILES: ""
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PROJECT_NAME }}-${{ matrix.platform.name }}-${{ github.run_number }}
+          path: |
+            hevc_batch_encode-${{ matrix.platform.name }}.${{ matrix.platform.archive_type }}
+            video_thumbnail-${{ matrix.platform.name }}.${{ matrix.platform.archive_type }}
+          compression-level: 9
+
+      - name: Release binaries (on tag push)
+        # if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            hevc_batch_encode-${{ matrix.platform.name }}.${{ matrix.platform.archive_type }}
+            video_thumbnail-${{ matrix.platform.name }}.${{ matrix.platform.archive_type }}
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -7,7 +7,7 @@ use std::{
 
 pub fn scan_video_from_path(
     path: impl AsRef<Path>,
-    depth: usize,
+    depth: u8,
 ) -> Result<(Vec<PathBuf>, Vec<walkdir::Error>), io::Error> {
     let abs_path = resolve_to_absolute(&path)?;
 

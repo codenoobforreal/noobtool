@@ -1,6 +1,6 @@
 use env_logger::{Env, WriteStyle};
+use hevc_batch_encode::run;
 use std::{io::Write, process};
-use video_thumbnail::run;
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))

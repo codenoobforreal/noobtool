@@ -6,28 +6,30 @@ use std::{
 };
 use walkdir::WalkDir;
 
-pub fn find_videos_within_folder<P: AsRef<Path>>(
-    path: P,
-    max_depth: usize,
+pub fn find_videos_within_folder(
+    path: impl AsRef<Path>,
+    max_depth: u8,
 ) -> (Vec<PathBuf>, Vec<walkdir::Error>) {
-    let mut videos = Vec::new();
-    let mut errors = Vec::new();
-
-    for entry in WalkDir::new(path).max_depth(max_depth).into_iter() {
-        match entry {
-            Ok(entry) => {
-                if entry.file_type().is_file() && is_video_path(entry.path()) {
-                    videos.push(entry.into_path());
+    WalkDir::new(path)
+        .max_depth(max_depth.into())
+        .into_iter()
+        .fold(
+            (Vec::new(), Vec::new()),
+            |(mut videos, mut errors), entry| {
+                match entry {
+                    Ok(entry) => {
+                        if entry.file_type().is_file() && is_video_path(entry.path()) {
+                            videos.push(entry.into_path());
+                        }
+                    }
+                    Err(e) => errors.push(e),
                 }
-            }
-            Err(e) => errors.push(e),
-        }
-    }
-
-    (videos, errors)
+                (videos, errors)
+            },
+        )
 }
 
-pub fn handle_walkdir_error(error: walkdir::Error) -> (String, &'static str) {
+pub fn handle_walkdir_error(error: &walkdir::Error) -> (String, &'static str) {
     let path = error
         .path()
         .unwrap_or(Path::new(" "))
@@ -48,7 +50,7 @@ pub fn handle_walkdir_error(error: walkdir::Error) -> (String, &'static str) {
 }
 
 #[allow(unused_variables)]
-pub fn is_root_path<P: AsRef<Path>>(path: P) -> bool {
+pub fn is_root_path(path: impl AsRef<Path>) -> bool {
     #[cfg(windows)]
     {
         use std::path::{Component, Prefix};
@@ -76,7 +78,7 @@ pub fn is_root_path<P: AsRef<Path>>(path: P) -> bool {
     }
 }
 
-pub fn is_video_path<P: AsRef<Path>>(path: P) -> bool {
+pub fn is_video_path(path: impl AsRef<Path>) -> bool {
     path.as_ref()
         .extension()
         .and_then(|ext| ext.to_str())
@@ -84,7 +86,7 @@ pub fn is_video_path<P: AsRef<Path>>(path: P) -> bool {
         .unwrap_or(false)
 }
 
-pub fn resolve_to_absolute<P: AsRef<Path>>(path: P) -> io::Result<PathBuf> {
+pub fn resolve_to_absolute(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let cleaned = clean(path);
 
     if Path::new(&cleaned).is_absolute() {

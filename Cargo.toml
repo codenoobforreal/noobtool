@@ -1,11 +1,10 @@
 [workspace]
 resolver = "3"
 members = [
-    "apps/hevc_auto_encode",
-    "apps/video_thumbnail",
-    "apps/ftc",
-    "crates/ffmpeg_utils",
-    "crates/utils",
+  "apps/hevc_batch_encode",
+  "apps/video_thumbnail",
+  "apps/ftc",
+  "crates/utils",
 ]
 
 [workspace.package]
