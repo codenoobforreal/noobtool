@@ -1,0 +1,10 @@
+[package]
+name = "video_encoder"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+video_metadata = { path = "../video_metadata", version = "*", package = "video_metadata" }
+ffmpeg_progress_monitor = { path = "../ffmpeg_progress_monitor", version = "*", package = "ffmpeg_progress_monitor" }
+thiserror = "2"
+chrono = "0.4"

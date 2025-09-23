@@ -1,11 +1,40 @@
+[package]
+name = "noobtool"
+version = "0.1.1"
+authors = ["codenoobforreal"]
+edition = "2024"
+repository = "https://github.com/codenoobforreal/noobtool"
+readme = "README.md"
+license = "MIT"
+keywords = ["cli", "video", "video-processing", "batch"]
+description = "a cli tool that batch video encoding and generating video thumbnail"
+
 [workspace]
 resolver = "3"
 members = [
-  "apps/hevc_batch_encode",
-  "apps/video_thumbnail",
-  # "apps/ftc",
-  "crates/utils",
+  "cli",
+  "ffmpeg_progress_monitor",
+  "utils",
+  "video_encoder",
+  "video_metadata",
+  "video_thumbnail",
 ]
 
 [workspace.package]
 edition = "2024"
+
+[dependencies]
+utils = { path = "./utils", version = "*", package = "utils" }
+clap = { version = "4.5", features = ["derive"] }
+cli = { path = "./cli", version = "*", package = "cli" }
+video_encoder = { path = "./video_encoder", version = "*", package = "video_encoder" }
+video_metadata = { path = "./video_metadata", version = "*", package = "video_metadata" }
+ffmpeg_progress_monitor = { path = "./ffmpeg_progress_monitor", version = "*", package = "ffmpeg_progress_monitor" }
+anyhow = "1.0"
+env_logger = "0.11"
+log = "0.4"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+serial_test = "3.2"
