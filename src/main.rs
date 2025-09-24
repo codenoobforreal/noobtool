@@ -14,7 +14,8 @@ fn main() {
         .init();
 
     match run() {
-        Ok(has_error) if has_error => process::exit(1),
+        // has_error
+        Ok(true) => process::exit(1),
         Ok(_) => process::exit(0),
         Err(e) => {
             log::error!("{}", e);
@@ -27,9 +28,7 @@ fn run() -> Result<bool> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::EncodeVideo(args) => encode_video::process_args(args)?,
-        Commands::GenerateVideoThumbnail(args) => todo!(),
-    };
-
-    Ok(true)
+        Commands::EncodeVideo(args) => Ok(encode_video::process_args(args)?),
+        Commands::GenerateVideoThumbnail(_) => Ok(false),
+    }
 }

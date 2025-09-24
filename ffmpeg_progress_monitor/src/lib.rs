@@ -30,15 +30,14 @@ pub struct ProgressMonitor {
 }
 
 impl ProgressMonitor {
-    pub fn new(total_duration_secs: f32) -> ProgressMonitorResult<Self> {
+    pub fn new(total_duration_secs: f32, msg: String) -> ProgressMonitorResult<Self> {
         let pb = ProgressBar::new(100);
         pb.set_draw_target(ProgressDrawTarget::stderr_with_hz(4));
         pb.set_style(
             ProgressStyle::default_bar()
-                .template("{spinner} [{elapsed_precise}] [{bar:40}] {percent}% ({eta})")?
-                .progress_chars("#>-"),
+                .template("{spinner} {msg} {percent}% elapsed:{elapsed} eta:{eta}")?,
         );
-
+        pb.set_message(msg);
         Ok(Self {
             pb,
             total_duration_secs,
@@ -64,13 +63,15 @@ impl ProgressMonitor {
             match key {
                 "total_size" => total_size = value.parse()?,
                 "out_time" => {
-                    let current_secs = Self::time_string_to_seconds(value)?;
-                    let new_progress =
-                        (current_secs / self.total_duration_secs * 100.0).clamp(0.0, 100.0) as u8;
+                    // 这里省略了错误处理，进度展示不应该影响 ffmpeg 的核心任务
+                    if let Ok(current_secs) = Self::time_string_to_seconds(value) {
+                        let new_progress = (current_secs / self.total_duration_secs * 100.0)
+                            .clamp(0.0, 100.0) as u8;
 
-                    if new_progress.abs_diff(last_progress) >= 1 {
-                        self.pb.set_position(new_progress.into());
-                        last_progress = new_progress;
+                        if new_progress.abs_diff(last_progress) >= 1 {
+                            self.pb.set_position(new_progress.into());
+                            last_progress = new_progress;
+                        }
                     }
                 }
                 "progress" if value == "end" => {
@@ -142,7 +143,7 @@ mod test {
 
     #[test]
     fn test_progress_data_parsing() -> ProgressMonitorResult<()> {
-        let monitor = ProgressMonitor::new(100.0)?;
+        let monitor = ProgressMonitor::new(100.0, String::default())?;
         let stderr = mock_ffmpeg_output(&[
             "total_size=2048000",
             "out_time=00:00:10.000",
@@ -159,7 +160,7 @@ mod test {
 
     #[test]
     fn test_progress_calculation() -> ProgressMonitorResult<()> {
-        let monitor = ProgressMonitor::new(200.0)?;
+        let monitor = ProgressMonitor::new(200.0, String::default())?;
 
         // 模拟时间推进：50秒 -> 100秒 -> 150秒
         let stderr = mock_ffmpeg_output(&[
@@ -177,7 +178,7 @@ mod test {
 
     #[test]
     fn test_missing_end_flag() -> ProgressMonitorResult<()> {
-        let monitor = ProgressMonitor::new(100.0)?;
+        let monitor = ProgressMonitor::new(100.0, String::default())?;
         let stderr = mock_ffmpeg_output(&["total_size=1024000"]);
 
         let result = monitor.process_progress_info(stderr);

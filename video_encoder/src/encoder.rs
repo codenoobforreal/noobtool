@@ -57,24 +57,22 @@ impl Encoder {
         })
     }
 
-    fn scale_filter(&self) -> Option<[String; 2]> {
-        match (self.scaled_width, self.scaled_height) {
-            (Some(width), None) => Some(["-vf".to_string(), format!("scale={}:-2", width)]),
-            (None, Some(height)) => Some(["-vf".to_string(), format!("scale=-2:{}", height)]),
-            _ => None,
-        }
-    }
-
-    // ffmpeg -hide_banner -v error -progress pipe:2 -i input.mp4 -c:v libx265 -x265-params log-level=error:output-depth=10:crf=20 -pix_fmt -preset medium yuv420p10le -filter:v fps=24 -f mp4 -c:a copy output.mp4
+    // ffmpeg -hide_banner -v error -progress pipe:2 -i input.mp4 -c:v libx265 -x265-params log-level=error:output-depth=10:crf=20 -pix_fmt yuv420p10le -preset medium -vf scale=1280:-2,fps=24 -f mp4 -c:a copy output.mp4
     pub(crate) fn build_ffmpeg_args(&self) -> EncodeResult<Vec<String>> {
         let mut args: Vec<String> = Vec::new();
+
         args.extend(
-            ["-hide_banner", "-v", "error", "-progress", "pipe:2", "-i"].map(|s| s.to_string()),
+            ["-hide_banner", "-v", "error", "-progress", "pipe:2", "-i"]
+                .iter()
+                .map(|&s| s.to_string()),
         );
 
-        args.push(self.input.to_string_lossy().to_string());
-
-        args.extend(["-c:v", "libx265", "-x265-params"].map(|s| s.to_string()));
+        args.push(self.input.to_string_lossy().into_owned());
+        args.extend(
+            ["-c:v", "libx265", "-x265-params"]
+                .iter()
+                .map(|&s| s.to_string()),
+        );
 
         args.push(format!("log-level=error:output-depth=10:crf={}", self.crf));
 
@@ -82,20 +80,31 @@ impl Encoder {
 
         args.push(format!("{}", self.preset));
 
-        args.extend(["-pix_fmt", "yuv420p10le"].map(|s| s.to_string()));
+        args.extend(["-pix_fmt", "yuv420p10le"].iter().map(|&s| s.to_string()));
 
-        if let Some(filter) = self.scale_filter() {
-            args.extend(filter);
+        match (self.scaled_width, self.scaled_height, self.fps) {
+            (Some(width), None, Some(fps)) => {
+                args.push("-vf".to_string());
+                args.push(format!("scale={}:-2,fps={}", width, fps));
+            }
+            (Some(width), None, None) => {
+                args.push("-vf".to_string());
+                args.push(format!("scale={}:-2", width));
+            }
+            (None, Some(height), Some(fps)) => {
+                args.push("-vf".to_string());
+                args.push(format!("scale=-2:{},fps={}", height, fps));
+            }
+            (None, Some(height), None) => {
+                args.push("-vf".to_string());
+                args.push(format!("scale=-2:{}", height));
+            }
+            _ => (),
         }
 
-        if let Some(fps) = self.fps {
-            args.push("-filter:v".to_string());
-            args.push(format!("fps={}", fps));
-        }
+        args.extend(["-f", "mp4", "-c:a", "copy"].iter().map(|&s| s.to_string()));
 
-        args.extend(["-f", "mp4", "-c:a", "copy"].map(|s| s.to_string()));
-
-        args.push(self.output()?.to_string_lossy().to_string());
+        args.push(self.output()?.to_string_lossy().into_owned());
 
         Ok(args)
     }
@@ -189,9 +198,12 @@ mod test {
         assert_eq!(encoder.scaled_width, Some(config.resolution.width()));
         assert_eq!(encoder.scaled_height, None);
         let args = encoder.build_ffmpeg_args()?.join(" ");
-        assert!(args.contains(&format!("fps={}", config.fps)));
         assert!(args.contains(&"crf=19".to_string()));
-        assert!(args.contains(&format!("scale={}:-2", config.resolution.width())));
+        assert!(args.contains(&format!(
+            "-vf scale={}:-2,fps={}",
+            config.resolution.width(),
+            config.fps
+        )));
 
         // 竖屏
         let config = Config {
@@ -204,7 +216,7 @@ mod test {
         assert_eq!(encoder.scaled_width, None);
         assert_eq!(encoder.scaled_height, Some(config.resolution().height()));
         let args = encoder.build_ffmpeg_args()?.join(" ");
-        assert!(args.contains(&format!("scale=-2:{}", config.resolution.height())));
+        assert!(args.contains(&format!("-vf scale=-2:{}", config.resolution.height())));
         Ok(())
     }
 
@@ -223,7 +235,6 @@ mod test {
         assert_eq!(encoder.scaled_width, None);
         assert_eq!(encoder.scaled_height, None);
         let args = encoder.build_ffmpeg_args()?.join(" ");
-        assert!(!args.contains(&"fps=".to_string()));
         assert!(args.contains(&"crf=20".to_string()));
         assert!(!args.contains(&"-vf".to_string()));
 

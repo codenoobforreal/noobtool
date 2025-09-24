@@ -52,7 +52,10 @@ pub fn process_encode(
     let config = Config::init(PathBuf::from(input), *resolution, *preset, fps);
     let metadata = Metadata::retrive(input)?;
     let encoder = Encoder::new(&config, &metadata)?;
-    let stat = encoder.encode(ProgressMonitor::new(metadata.duration())?)?;
+    let stat = encoder.encode(ProgressMonitor::new(
+        metadata.duration(),
+        config.input().to_string_lossy().into_owned(),
+    )?)?;
 
     let reduction = stat.1 as f64 / metadata.size() as f64;
 
