@@ -8,6 +8,10 @@ use std::{
 };
 use video_metadata::{Metadata, Resolution};
 
+const BASE_ARGS: &[&str] = &["-hide_banner", "-v", "error", "-progress", "pipe:2", "-i"];
+const VIDEO_CODEC_ARGS: &[&str] = &["-c:v", "libx265", "-x265-params"];
+const AUDIO_ARGS: &[&str] = &["-f", "mp4", "-c:a", "copy"];
+
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct Encoder {
     input: PathBuf,
@@ -61,18 +65,11 @@ impl Encoder {
     pub(crate) fn build_ffmpeg_args(&self) -> EncodeResult<Vec<String>> {
         let mut args: Vec<String> = Vec::new();
 
-        args.extend(
-            ["-hide_banner", "-v", "error", "-progress", "pipe:2", "-i"]
-                .iter()
-                .map(|&s| s.to_string()),
-        );
+        args.extend(BASE_ARGS.iter().map(|&s| s.to_string()));
 
         args.push(self.input.to_string_lossy().into_owned());
-        args.extend(
-            ["-c:v", "libx265", "-x265-params"]
-                .iter()
-                .map(|&s| s.to_string()),
-        );
+
+        args.extend(VIDEO_CODEC_ARGS.iter().map(|&s| s.to_string()));
 
         args.push(format!("log-level=error:output-depth=10:crf={}", self.crf));
 
@@ -82,31 +79,33 @@ impl Encoder {
 
         // args.extend(["-pix_fmt", "yuv420p10le"].iter().map(|&s| s.to_string()));
 
-        match (self.scaled_width, self.scaled_height, self.fps) {
-            (Some(width), None, Some(fps)) => {
-                args.push("-vf".to_string());
-                args.push(format!("scale={}:-2,fps={}", width, fps));
-            }
-            (Some(width), None, None) => {
-                args.push("-vf".to_string());
-                args.push(format!("scale={}:-2", width));
-            }
-            (None, Some(height), Some(fps)) => {
-                args.push("-vf".to_string());
-                args.push(format!("scale=-2:{},fps={}", height, fps));
-            }
-            (None, Some(height), None) => {
-                args.push("-vf".to_string());
-                args.push(format!("scale=-2:{}", height));
-            }
-            _ => (),
+        if let Some(vf_str) = self.video_filter() {
+            args.push("-vf".to_string());
+            args.push(vf_str);
         }
 
-        args.extend(["-f", "mp4", "-c:a", "copy"].iter().map(|&s| s.to_string()));
+        args.extend(AUDIO_ARGS.iter().map(|&s| s.to_string()));
 
         args.push(self.output()?.to_string_lossy().into_owned());
 
         Ok(args)
+    }
+
+    fn video_filter(&self) -> Option<String> {
+        let scale_str = match (self.scaled_width, self.scaled_height) {
+            (Some(w), None) => Some(format!("scale={}:-2", w)),
+            (None, Some(h)) => Some(format!("scale=-2:{}", h)),
+            _ => None,
+        };
+
+        let fps_str = self.fps.map(|f| format!("fps={}", f));
+
+        match (scale_str, fps_str) {
+            (Some(scale), Some(fps)) => Some(format!("{},{}", scale, fps)),
+            (None, Some(fps)) => Some(fps),
+            (Some(scale), None) => Some(scale),
+            _ => None,
+        }
     }
 
     pub fn encode(&self, monitor: ProgressMonitor) -> EncodeResult<(Duration, u64)> {
@@ -184,7 +183,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn use_config() -> EncodeResult<()> {
+    fn downscale() -> EncodeResult<()> {
         let metadata = Metadata::new(1_920, 1_080, 30.0, 0.0, 0);
         let config = Config {
             input: "/path/to/video".into(),
@@ -193,12 +192,8 @@ mod test {
             ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
-        assert_eq!(encoder.fps, Some(config.fps));
-        assert_eq!(encoder.crf, 19);
-        assert_eq!(encoder.scaled_width, Some(config.resolution.width()));
-        assert_eq!(encoder.scaled_height, None);
         let args = encoder.build_ffmpeg_args()?.join(" ");
-        assert!(args.contains(&"crf=19".to_string()));
+        assert!(args.contains("crf=19"));
         assert!(args.contains(&format!(
             "-vf scale={}:-2,fps={}",
             config.resolution.width(),
@@ -213,15 +208,18 @@ mod test {
             ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
-        assert_eq!(encoder.scaled_width, None);
-        assert_eq!(encoder.scaled_height, Some(config.resolution().height()));
         let args = encoder.build_ffmpeg_args()?.join(" ");
-        assert!(args.contains(&format!("-vf scale=-2:{}", config.resolution.height())));
+        assert!(args.contains(&format!(
+            "-vf scale=-2:{},fps={}",
+            config.resolution.height(),
+            config.fps
+        )));
+
         Ok(())
     }
 
     #[test]
-    fn use_input() -> EncodeResult<()> {
+    fn default() -> EncodeResult<()> {
         let metadata = Metadata::new(1_920, 1_080, 24.0, 0.0, 0);
         let config = Config {
             input: "/path/to/video".into(),
@@ -230,13 +228,9 @@ mod test {
             ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
-        assert_eq!(encoder.fps, None);
-        assert_eq!(encoder.crf, 20);
-        assert_eq!(encoder.scaled_width, None);
-        assert_eq!(encoder.scaled_height, None);
         let args = encoder.build_ffmpeg_args()?.join(" ");
-        assert!(args.contains(&"crf=20".to_string()));
-        assert!(!args.contains(&"-vf".to_string()));
+        assert!(args.contains("crf=20"));
+        assert!(!args.contains("-vf"));
 
         // 竖屏
         let config = Config {
@@ -246,10 +240,19 @@ mod test {
             ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
-        assert_eq!(encoder.scaled_width, None);
-        assert_eq!(encoder.scaled_height, None);
         let args = encoder.build_ffmpeg_args()?.join(" ");
-        assert!(!args.contains(&"-vf".to_string()));
+        assert!(!args.contains("-vf"));
+
+        // 没有缩放但有fps限制
+        let config = Config {
+            input: "/path/to/video".into(),
+            resolution: Resolution::Vqhd,
+            fps: 20,
+            ..Config::default()
+        };
+        let encoder = Encoder::new(&config, &metadata)?;
+        let args = encoder.build_ffmpeg_args()?.join(" ");
+        assert!(args.contains(&format!("-vf fps={}", config.fps)));
 
         Ok(())
     }
