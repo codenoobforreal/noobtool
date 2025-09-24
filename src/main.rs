@@ -28,7 +28,7 @@ fn run() -> Result<bool> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::EncodeVideo(args) => Ok(encode_video::process_args(args)?),
-        Commands::GenerateVideoThumbnail(_) => Ok(false),
+        Commands::EncodeVideo(args) => Ok(encode_video::run(args)?),
+        Commands::GenerateVideoThumbnail(args) => Ok(generate_video_thumbnail::run(args)?),
     }
 }

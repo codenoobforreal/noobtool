@@ -1,4 +1,4 @@
-use crate::constants::VIDEO_EXTS_SET;
+use crate::constants::VIDEO_EXTS;
 use path_absolutize::Absolutize;
 use std::{
     io,
@@ -53,7 +53,7 @@ pub fn is_video_path(path: impl AsRef<Path>) -> bool {
     path.as_ref()
         .extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| VIDEO_EXTS_SET.contains(&ext.to_ascii_lowercase().as_str()))
+        .map(|ext| VIDEO_EXTS.contains(&ext.to_ascii_lowercase().as_str()))
         .unwrap_or(false)
 }
 
@@ -69,8 +69,6 @@ mod test {
     #[test]
     fn handle_dot_path() -> io::Result<()> {
         let absolute_path = resolve_to_absolute(Path::new("."))?;
-        println!("{}", absolute_path.display());
-
         assert!(
             !absolute_path.to_string_lossy().contains('.'),
             "{}",

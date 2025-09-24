@@ -6,4 +6,5 @@ edition.workspace = true
 [dependencies]
 video_encoder = { path = "../video_encoder", version = "*", package = "video_encoder" }
 video_metadata = { path = "../video_metadata", version = "*", package = "video_metadata" }
+video_thumbnail = { path = "../video_thumbnail", version = "*", package = "video_thumbnail" }
 clap = { version = "4.5", features = ["derive"] }

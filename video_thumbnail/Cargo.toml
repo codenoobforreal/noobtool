@@ -4,3 +4,6 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
+thiserror = "2"
+chrono = "0.4"
+ffmpeg_progress_monitor = { path = "../ffmpeg_progress_monitor", version = "*", package = "ffmpeg_progress_monitor" }

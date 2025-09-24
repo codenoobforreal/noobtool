@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub fn scan_video_from_path(path: impl AsRef<Path>, depth: u8) -> Result<Vec<PathBuf>, io::Error> {
+fn scan_videos_from_path(path: impl AsRef<Path>, depth: u8) -> Result<Vec<PathBuf>, io::Error> {
     let abs_path = resolve_to_absolute(&path)?;
 
     let meta = symlink_metadata(&abs_path)?;
@@ -22,4 +22,12 @@ pub fn scan_video_from_path(path: impl AsRef<Path>, depth: u8) -> Result<Vec<Pat
         }
         _ => Ok(vec![]),
     }
+}
+
+pub fn scan_videos_from_paths(paths: &[impl AsRef<Path>], depth: u8) -> Vec<PathBuf> {
+    paths
+        .iter()
+        .flat_map(|input| scan_videos_from_path(input, depth).ok())
+        .flatten()
+        .collect()
 }

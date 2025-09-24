@@ -12,8 +12,8 @@ pub struct EncodeVideoArgs {
     pub preset: Preset,
     #[arg(short, long, default_value_t = Resolution::default(),long_help = "limit resolution")]
     pub resolution: Resolution,
-    #[arg(short, long, default_value_t = 1,value_parser = value_parser!(u8).range(1..), help = "folder recursive depth")]
-    pub depth: u8,
     #[arg(short, long, default_value_t = 24,value_parser = value_parser!(u8).range(1..))]
     pub fps: u8,
+    #[arg(short, long, default_value_t = 1,value_parser = value_parser!(u8).range(1..), help = "folder recursive depth")]
+    pub depth: u8,
 }

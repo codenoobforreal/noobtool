@@ -80,7 +80,7 @@ impl Encoder {
 
         args.push(format!("{}", self.preset));
 
-        args.extend(["-pix_fmt", "yuv420p10le"].iter().map(|&s| s.to_string()));
+        // args.extend(["-pix_fmt", "yuv420p10le"].iter().map(|&s| s.to_string()));
 
         match (self.scaled_width, self.scaled_height, self.fps) {
             (Some(width), None, Some(fps)) => {

@@ -71,7 +71,7 @@ impl Metadata {
     }
 
     pub fn retrive(video: &Path) -> Result<Self, MetadataError> {
-        // ffprobe -v fatal -select_streams v:0 -show_entries stream=width,height,avg_frame_rate -show_entries format=duration,size -of default=noprint_wrappers=1:nokey=1 input.mp4
+        // ffprobe -v fatal -select_streams v:0 -show_entries stream=width,height,avg_frame_rate -show_entries format=duration,size -of default=noprint_wrappers=1 input.mp4
         let output = Command::new("ffprobe")
             .args([
                 "-v",
@@ -141,6 +141,10 @@ impl Metadata {
 
     pub fn height(&self) -> u16 {
         self.height
+    }
+
+    pub fn ratio(&self) -> f32 {
+        self.width as f32 / self.height as f32
     }
 
     pub fn fps(&self) -> f32 {
