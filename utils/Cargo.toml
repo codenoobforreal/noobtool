@@ -6,4 +6,3 @@ edition.workspace = true
 [dependencies]
 walkdir = "2.5"
 path-absolutize = "3.1"
-serde_json = "1.0"

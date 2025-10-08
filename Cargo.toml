@@ -1,13 +1,19 @@
 [package]
 name = "noobtool"
-version = "0.1.1"
+version = "0.2.1"
 authors = ["codenoobforreal"]
 edition = "2024"
 repository = "https://github.com/codenoobforreal/noobtool"
 readme = "README.md"
 license = "MIT"
-keywords = ["cli", "video", "video-processing", "batch"]
-description = "a cli tool that batch video encoding and generating video thumbnail"
+keywords = [
+  "cli",
+  "video",
+  "video processing",
+  "batch",
+  "video thumbnail generator",
+]
+description = "a cli tool that batch video processing,such as video encoding and thumbnail generator"
 
 [workspace]
 resolver = "3"
@@ -25,19 +31,12 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
-cli = { path = "./cli", version = "*", package = "cli" }
 anyhow = "1.0"
 env_logger = "0.11"
 log = "0.4"
-# spinners = "4.1"
-# indicatif = "0.18"
+cli = { path = "./cli", version = "*", package = "cli" }
 utils = { path = "./utils", version = "*", package = "utils" }
 video_encoder = { path = "./video_encoder", version = "*", package = "video_encoder" }
 video_metadata = { path = "./video_metadata", version = "*", package = "video_metadata" }
 video_thumbnail = { path = "./video_thumbnail", version = "*", package = "video_thumbnail" }
 ffmpeg_progress_monitor = { path = "./ffmpeg_progress_monitor", version = "*", package = "ffmpeg_progress_monitor" }
-
-[dev-dependencies]
-assert_cmd = "2.0"
-predicates = "3.1"
-serial_test = "3.2"

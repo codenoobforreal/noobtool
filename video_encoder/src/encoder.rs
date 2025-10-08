@@ -35,12 +35,12 @@ impl Encoder {
             if metadata.pixels() >= config.resolution().pixels() {
                 (
                     resolution_to_crf(config.resolution()),
-                    if config.resolution().width() >= config.resolution().height() {
+                    if metadata.width() > metadata.height() {
                         Some(config.resolution().width())
                     } else {
                         None
                     },
-                    if config.resolution().width() < config.resolution().height() {
+                    if metadata.width() < metadata.height() {
                         Some(config.resolution().height())
                     } else {
                         None
@@ -71,7 +71,7 @@ impl Encoder {
 
         args.extend(VIDEO_CODEC_ARGS.iter().map(|&s| s.to_string()));
 
-        args.push(format!("log-level=error:output-depth=10:crf={}", self.crf));
+        args.push(format!("log-level=error:crf={}", self.crf));
 
         args.push("-preset".to_string());
 
@@ -201,19 +201,18 @@ mod test {
         )));
 
         // 竖屏
-        let config = Config {
-            input: "/path/to/video".into(),
-            resolution: Resolution::Vhd,
-            fps: 24,
-            ..Config::default()
-        };
+        let metadata = Metadata::new(1_080, 1_920, 30.0, 0.0, 0);
         let encoder = Encoder::new(&config, &metadata)?;
         let args = encoder.build_ffmpeg_args()?.join(" ");
-        assert!(args.contains(&format!(
-            "-vf scale=-2:{},fps={}",
-            config.resolution.height(),
-            config.fps
-        )));
+        assert!(
+            args.contains(&format!(
+                "-vf scale=-2:{},fps={}",
+                config.resolution.height(),
+                config.fps
+            )),
+            "{}",
+            args
+        );
 
         Ok(())
     }
