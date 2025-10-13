@@ -1,4 +1,5 @@
 use crate::constants::VIDEO_EXTS;
+use anyhow::{Result, anyhow};
 use path_absolutize::Absolutize;
 use std::{
     io,
@@ -61,6 +62,26 @@ pub fn resolve_to_absolute(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     let path_ref = path.as_ref();
     let abs_path = path_ref.absolutize()?.to_path_buf();
     Ok(abs_path)
+}
+
+pub fn append_suffix_to_path<P: AsRef<Path>>(path: &P, suffix: impl AsRef<str>) -> Result<PathBuf> {
+    let stem = path.as_ref().file_stem().ok_or_else(|| {
+        anyhow!(
+            "获取 {} 路径文件名（不包含扩展名）失败",
+            path.as_ref().to_string_lossy().to_string()
+        )
+    })?;
+
+    let ext = path.as_ref().extension().ok_or_else(|| {
+        anyhow!(
+            "获取 {} 路径扩展名失败",
+            path.as_ref().to_string_lossy().to_string()
+        )
+    })?;
+
+    let new_filename = format!("{}-{}.{}", stem.display(), suffix.as_ref(), ext.display());
+
+    Ok(path.as_ref().with_file_name(new_filename))
 }
 
 #[cfg(test)]

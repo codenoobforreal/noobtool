@@ -1,7 +1,8 @@
 use anyhow::{Result, bail};
+use chrono::Local;
 use cli::GenerateVideoThumbnailArgs;
 use std::path::PathBuf;
-use utils::scan_videos_from_paths;
+use utils::{append_suffix_to_path, scan_videos_from_paths};
 use video_metadata::Metadata;
 use video_thumbnail::{Generator, Grid};
 
@@ -39,8 +40,11 @@ fn generate_thumbnails(videos: Vec<PathBuf>, grid: Grid, base_dimesion: u16) -> 
 
 pub fn generate_thumbnail(input: PathBuf, grid: Grid, base_dimesion: u16) -> Result<()> {
     let metadata = Metadata::retrive(&input)?;
+    let output = append_suffix_to_path(&input, Local::now().format("%y%m%d%H%M%S").to_string())?
+        .with_extension("jpg");
     let generator = Generator::new(
         &input,
+        &output,
         metadata.duration(),
         grid,
         base_dimesion,

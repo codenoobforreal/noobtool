@@ -144,7 +144,7 @@ impl Resolution {
     }
 
     /// 获取主要的缩放尺寸（取宽高中的较大值）
-    pub fn get_primary_scale_dimension(&self) -> u16 {
+    pub fn get_primary_dimension(&self) -> u16 {
         max(self.width(), self.height())
     }
 }

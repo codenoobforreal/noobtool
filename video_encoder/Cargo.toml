@@ -9,4 +9,3 @@ ffmpeg_progress_monitor = { path = "../ffmpeg_progress_monitor", version = "*", 
 ffmpeg_command_builder = { path = "../ffmpeg_command_builder", version = "*", package = "ffmpeg_command_builder" }
 utils = { path = "../utils", version = "*", package = "utils" }
 thiserror = "2"
-chrono = "0.4"

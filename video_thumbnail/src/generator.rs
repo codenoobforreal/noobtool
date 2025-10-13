@@ -1,12 +1,13 @@
 use crate::{Grid, ThumbnailError, error::ThumbnailResult};
-use chrono::Local;
+use ffmpeg_command_builder::FfmpegCommandBuilder;
 use std::{
-    path::{Path, PathBuf},
+    path::Path,
     process::{Command, Stdio},
 };
 
 pub struct Generator<'a> {
     input: &'a Path,
+    output: &'a Path,
     duration: f32,
     grid: Grid,
     base_dimesion: u16,
@@ -14,9 +15,17 @@ pub struct Generator<'a> {
 }
 
 impl<'a> Generator<'a> {
-    pub fn new(input: &'a Path, duration: f32, grid: Grid, base_dimesion: u16, ratio: f32) -> Self {
+    pub fn new(
+        input: &'a Path,
+        output: &'a Path,
+        duration: f32,
+        grid: Grid,
+        base_dimesion: u16,
+        ratio: f32,
+    ) -> Self {
         Self {
             input,
+            output,
             duration,
             grid,
             base_dimesion,
@@ -24,73 +33,39 @@ impl<'a> Generator<'a> {
         }
     }
 
-    pub(crate) fn build_ffmpeg_args(&self) -> ThumbnailResult<Vec<String>> {
+    pub(crate) fn build_ffmpeg_command(&self) -> ThumbnailResult<Command> {
         let (width, height) = self.calc_dimension();
-
-        let mut args: Vec<String> = Vec::new();
-
-        args.extend(
-            [
-                "-hide_banner",
-                "-v",
-                "error",
-                "-progress",
-                "pipe:2",
-                "-skip_frame",
-                "nokey",
-                "-i",
-            ]
-            .iter()
-            .map(|&s| s.to_string()),
-        );
-
-        args.push(self.input.to_string_lossy().into_owned());
-
-        args.extend(["-map", "0:v", "-vf"].iter().map(|&s| s.to_string()));
-
         let (row, col) = match self.grid {
-            Grid { row: 0, col: 0 } => self.get_default_settings(),
+            Grid { row: 0, col: 0 } => self.get_default_grid_config(),
             g => (g.row, g.col),
         };
 
-        args.push(format!(
-            "select='eq(pict_type,I)',fps=1/{},scale={}:{},tile={}x{}",
-            self.interval(),
-            width,
-            height,
-            row,
-            col
-        ));
-
-        args.extend(
-            [
-                "-fps_mode",
-                "vfr",
-                "-frames:v",
-                "1",
-                "-update",
-                "1",
-                "-q:v",
-                "2",
-                "-y",
-            ]
-            .iter()
-            .map(|&s| s.to_string()),
-        );
-
-        args.push(self.output()?.to_string_lossy().into_owned());
-
-        Ok(args)
+        Ok(FfmpegCommandBuilder::new()
+            .global_opt("-hide_banner -v error -skip_frame nokey -y")
+            .input(self.input.to_string_lossy())
+            .output_opt("-map 0:v")
+            .output_opt(format!(
+                "-vf select='eq(pict_type,I)',fps=1/{},scale={}:{},tile={}x{}",
+                self.interval(),
+                width,
+                height,
+                row,
+                col
+            ))
+            .output_opt("-fps_mode vfr -frames:v 1 -update 1 -q:v 2")
+            .output(self.output.to_string_lossy())
+            .build())
     }
 
     pub fn generate(&self) -> ThumbnailResult<()> {
-        let mut command = Command::new("ffmpeg");
+        let mut child = self
+            .build_ffmpeg_command()?
+            .stderr(Stdio::piped())
+            .spawn()?;
 
-        command.args(self.build_ffmpeg_args()?);
-
-        let mut child = command.stderr(Stdio::piped()).spawn()?;
-
-        // let stderr = child.stderr.take().ok_or(ThumbnailError::TakeStd)?;
+        // let mut output = String::new();
+        // let _ = child.stderr.take().unwrap().read_to_string(&mut output);
+        // println!("{}", output);
 
         let status = child.wait()?;
         if !status.success() {
@@ -101,11 +76,9 @@ impl<'a> Generator<'a> {
     }
 
     fn interval(&self) -> u32 {
-        // self.duration / self.grid_count() as f32
-
         let grid_count = match self.grid {
             Grid { row: 0, col: 0 } => {
-                let (r, c) = self.get_default_settings();
+                let (r, c) = self.get_default_grid_config();
                 r as u16 * c as u16
             }
             _ => self.grid.count(),
@@ -115,20 +88,19 @@ impl<'a> Generator<'a> {
     }
 
     fn calc_dimension(&self) -> (u16, u16) {
-        if self.ratio >= 1.0 {
-            (
+        match self.ratio >= 1.0 {
+            true => (
                 (self.base_dimesion as f32 * self.ratio) as u16,
                 self.base_dimesion,
-            )
-        } else {
-            (
+            ),
+            false => (
                 self.base_dimesion,
                 (self.base_dimesion as f32 * self.ratio.recip()) as u16,
-            )
+            ),
         }
     }
 
-    fn get_default_settings(&self) -> (u8, u8) {
+    fn get_default_grid_config(&self) -> (u8, u8) {
         match self.duration {
             // 4 grid needs 60s for each (GOP) so it is 4*60=240
             d if d <= 240.0 => (2, 2),
@@ -139,20 +111,5 @@ impl<'a> Generator<'a> {
             d if d <= 14400.0 => (5, 4),
             _ => (5, 5),
         }
-    }
-
-    fn output(&self) -> ThumbnailResult<PathBuf> {
-        let stem = self
-            .input
-            .file_stem()
-            .ok_or_else(|| ThumbnailError::FileStem(self.input.to_string_lossy().to_string()))?;
-
-        let new_filename = format!(
-            "{}-{}.jpg",
-            stem.display(),
-            Local::now().format("%y%m%d%H%M%S")
-        );
-
-        Ok(self.input.with_file_name(new_filename))
     }
 }

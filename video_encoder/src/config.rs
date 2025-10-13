@@ -1,14 +1,13 @@
 use video_metadata::Resolution;
-
 // use crate::preset::Preset;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Config {
+pub struct Config<'a> {
     /// 输入视频路径
-    pub(crate) input: PathBuf,
+    pub(crate) input: &'a Path,
     // /// 输出视频路径
-    // pub(crate) output: PathBuf,
+    pub(crate) output: &'a Path,
     /// 分辨率限制，若输入视频分辨率高于该分辨率则限制到该分辨率，低于该分辨率则使用源视频分辨率
     pub(crate) resolution: Resolution,
     /// 编码器预设
@@ -17,15 +16,17 @@ pub struct Config {
     pub(crate) fps: u8,
 }
 
-impl Config {
+impl<'a> Config<'a> {
     pub fn init(
-        input: PathBuf,
+        input: &'a Path,
+        output: &'a Path,
         resolution: Resolution,
         // preset: Preset,
         fps: u8,
     ) -> Self {
         Config {
             input,
+            output,
             resolution,
             // preset,
             fps,
@@ -33,7 +34,7 @@ impl Config {
     }
 
     pub fn input(&self) -> &Path {
-        &self.input
+        self.input
     }
 
     pub fn resolution(&self) -> Resolution {
@@ -50,10 +51,11 @@ impl Config {
 }
 
 #[allow(clippy::derivable_impls)]
-impl Default for Config {
+impl<'a> Default for Config<'a> {
     fn default() -> Self {
         Self {
-            input: Default::default(),
+            input: Path::new("input.mp4"),
+            output: Path::new("output.mp4"),
             resolution: Resolution::default(),
             // preset: Preset::default(),
             fps: Default::default(),

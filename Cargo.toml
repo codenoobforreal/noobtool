@@ -18,7 +18,8 @@ description = "a cli tool that batch video processing,such as video encoding and
 [workspace]
 resolver = "3"
 members = [
-  "cli", "ffmpeg_command_builder",
+  "cli",
+  "ffmpeg_command_builder",
   "ffmpeg_progress_monitor",
   "utils",
   "video_encoder",
@@ -33,6 +34,7 @@ edition = "2024"
 clap = { version = "4.5", features = ["derive"] }
 anyhow = "1.0"
 env_logger = "0.11"
+chrono = "0.4"
 log = "0.4"
 cli = { path = "./cli", version = "*", package = "cli" }
 utils = { path = "./utils", version = "*", package = "utils" }

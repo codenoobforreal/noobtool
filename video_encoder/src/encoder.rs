@@ -1,18 +1,18 @@
 use crate::{Config, EncoderError, error::EncodeResult};
-use chrono::Local;
 use ffmpeg_command_builder::FfmpegCommandBuilder;
 use ffmpeg_progress_monitor::ProgressMonitor;
 use std::{
     cmp::{Ordering, min},
-    path::PathBuf,
+    path::Path,
     process::{Command, Stdio},
     time::Duration,
 };
 use video_metadata::{Metadata, Orientation, Resolution};
 
-#[derive(Debug, Default, PartialEq, Clone)]
-pub struct Encoder {
-    input: PathBuf,
+#[derive(Debug, PartialEq, Clone)]
+pub struct Encoder<'a> {
+    input: &'a Path,
+    output: &'a Path,
     // preset: Preset,
     crf: u8,
     fps: Option<u8>,
@@ -20,8 +20,8 @@ pub struct Encoder {
     scaled_height: Option<u16>,
 }
 
-impl Encoder {
-    pub fn new(config: &Config, metadata: &Metadata) -> EncodeResult<Self> {
+impl<'a> Encoder<'a> {
+    pub fn new(config: &'a Config, metadata: &Metadata) -> EncodeResult<Self> {
         let fps = if metadata.fps() > config.fps().into() {
             Some(config.fps())
         } else {
@@ -31,7 +31,8 @@ impl Encoder {
         let (crf, scaled_width, scaled_height) = Self::compute_scaling_params(config, metadata)?;
 
         Ok(Self {
-            input: config.input().to_path_buf(),
+            input: config.input,
+            output: config.output,
             // preset: config.preset(),
             crf,
             fps,
@@ -56,11 +57,11 @@ impl Encoder {
                 let orientation = metadata.resolution()?.get_orientation();
                 let (scaled_width, scaled_height) = match orientation {
                     Orientation::Landscape => {
-                        let width = config.resolution().get_primary_scale_dimension();
+                        let width = config.resolution().get_primary_dimension();
                         (Some(width), None)
                     }
                     Orientation::Portrait => {
-                        let height = config.resolution().get_primary_scale_dimension();
+                        let height = config.resolution().get_primary_dimension();
                         (None, Some(height))
                     }
                 };
@@ -97,7 +98,7 @@ impl Encoder {
             builder = builder.output_opt(format!("-vf {}", vf_str));
         }
 
-        let command = builder.output(self.output()?.to_string_lossy()).build();
+        let command = builder.output(self.output.to_string_lossy()).build();
 
         Ok(command)
     }
@@ -144,26 +145,6 @@ impl Encoder {
         Ok(result)
     }
 
-    fn output(&self) -> EncodeResult<PathBuf> {
-        let stem = self
-            .input
-            .file_stem()
-            .ok_or_else(|| EncoderError::FileStem(self.input.to_string_lossy().to_string()))?;
-
-        // todo: 支持更多格式
-        let new_filename = format!(
-            "{}-{}.mp4",
-            stem.display(),
-            Local::now().format("%y%m%d%H%M%S")
-        );
-
-        Ok(self.input.with_file_name(new_filename))
-    }
-
-    pub fn input(&self) -> PathBuf {
-        self.input.clone()
-    }
-
     // pub fn preset(&self) -> Preset {
     //     self.preset
     // }
@@ -185,6 +166,19 @@ impl Encoder {
     }
 }
 
+impl<'a> Default for Encoder<'a> {
+    fn default() -> Self {
+        Self {
+            input: Path::new("input.mp4"),
+            output: Path::new("output.mp4"),
+            crf: Default::default(),
+            fps: Default::default(),
+            scaled_width: Default::default(),
+            scaled_height: Default::default(),
+        }
+    }
+}
+
 /// https://handbrake.fr/docs/en/1.9.0/workflow/adjust-quality.html
 fn resolution_to_crf(resolution: Resolution) -> u8 {
     match resolution.pixels() {
@@ -203,10 +197,9 @@ mod test {
         // 源视频横屏，配置横屏
         let metadata = Metadata::new(1_920, 1_080, 30.0, 0.0, 0);
         let config = Config {
-            input: "/path/to/video".into(),
             resolution: Resolution::Hd,
             fps: 24,
-            // ..Config::default()
+            ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
         let command = encoder.build_ffmpeg_command()?;
@@ -216,10 +209,9 @@ mod test {
 
         // 源视频横屏，配置竖屏
         let config = Config {
-            input: "/path/to/video".into(),
             resolution: Resolution::Vhd,
             fps: 24,
-            // ..Config::default()
+            ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
         let command = encoder.build_ffmpeg_command()?;
@@ -237,10 +229,9 @@ mod test {
 
         // 源视频竖屏，配置竖屏
         let config = Config {
-            input: "/path/to/video".into(),
             resolution: Resolution::Hd,
             fps: 24,
-            // ..Config::default()
+            ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
         let command = encoder.build_ffmpeg_command()?;
@@ -256,10 +247,9 @@ mod test {
         // 横屏
         let metadata = Metadata::new(1_920, 1_080, 24.0, 0.0, 0);
         let config = Config {
-            input: "/path/to/video".into(),
             fps: 24,
             resolution: Resolution::Qhd,
-            // ..Config::default()
+            ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
         let command = encoder.build_ffmpeg_command()?;
@@ -269,10 +259,9 @@ mod test {
 
         // 竖屏
         let config = Config {
-            input: "/path/to/video".into(),
             resolution: Resolution::Vqhd,
             fps: 24,
-            // ..Config::default()
+            ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
         let command = encoder.build_ffmpeg_command()?;
@@ -282,10 +271,9 @@ mod test {
 
         // 没有缩放但有fps限制
         let config = Config {
-            input: "/path/to/video".into(),
             resolution: Resolution::Vqhd,
             fps: 20,
-            // ..Config::default()
+            ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
         let command = encoder.build_ffmpeg_command()?;

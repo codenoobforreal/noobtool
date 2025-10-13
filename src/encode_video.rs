@@ -1,11 +1,12 @@
 use anyhow::{Result, bail};
+use chrono::Local;
 use cli::EncodeVideoArgs;
 use ffmpeg_progress_monitor::ProgressMonitor;
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
 };
-use utils::{format_file_size, scan_videos_from_paths};
+use utils::{append_suffix_to_path, format_file_size, scan_videos_from_paths};
 use video_encoder::{Config, Encoder};
 use video_metadata::{Metadata, Resolution};
 
@@ -35,7 +36,9 @@ fn batch_encode(videos: &[PathBuf], resolution: &Resolution, fps: u8) -> bool {
 }
 
 fn process_encode(input: &Path, resolution: &Resolution, fps: u8) -> Result<()> {
-    let config = Config::init(PathBuf::from(input), *resolution, fps);
+    let output = append_suffix_to_path(&input, Local::now().format("%y%m%d%H%M%S").to_string())?
+        .with_extension("mp4");
+    let config = Config::init(input, &output, *resolution, fps);
     let metadata = Metadata::retrive(input)?;
     let encoder = Encoder::new(&config, &metadata)?;
     let stat = encoder.encode(ProgressMonitor::new(
