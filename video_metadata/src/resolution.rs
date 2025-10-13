@@ -1,4 +1,15 @@
-use std::{fmt, str::FromStr};
+use std::{
+    cmp::{Ordering, max},
+    fmt,
+    str::FromStr,
+};
+
+/// 朝向枚举
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum Orientation {
+    Landscape, // 横屏
+    Portrait,  // 竖屏
+}
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Resolution {
@@ -122,6 +133,19 @@ impl Resolution {
             Resolution::Vhd => 1_280,
             &Resolution::Arbitrary { width: _, height } => height,
         }
+    }
+
+    /// 判断朝向
+    pub fn get_orientation(&self) -> Orientation {
+        match self.width().cmp(&self.height()) {
+            Ordering::Greater | Ordering::Equal => Orientation::Landscape,
+            Ordering::Less => Orientation::Portrait,
+        }
+    }
+
+    /// 获取主要的缩放尺寸（取宽高中的较大值）
+    pub fn get_primary_scale_dimension(&self) -> u16 {
+        max(self.width(), self.height())
     }
 }
 

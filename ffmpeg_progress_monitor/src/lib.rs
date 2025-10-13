@@ -1,4 +1,4 @@
-use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle, style::TemplateError};
+use indicatif::{ProgressBar, ProgressStyle, style::TemplateError};
 use std::{
     io::{BufRead, BufReader, Read},
     num::{ParseFloatError, ParseIntError},
@@ -32,7 +32,6 @@ pub struct ProgressMonitor {
 impl ProgressMonitor {
     pub fn new(total_duration_secs: f32, msg: String) -> ProgressMonitorResult<Self> {
         let pb = ProgressBar::new(100);
-        pb.set_draw_target(ProgressDrawTarget::stderr_with_hz(4));
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{spinner} {msg} {percent}% elapsed:{elapsed} eta:{eta}")?,
@@ -78,6 +77,7 @@ impl ProgressMonitor {
                     self.pb.finish_and_clear();
                     return Ok((self.pb.elapsed(), total_size));
                 }
+                // _ => println!("{}", line),
                 _ => {}
             }
         }

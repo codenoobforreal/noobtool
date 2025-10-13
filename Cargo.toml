@@ -18,7 +18,7 @@ description = "a cli tool that batch video processing,such as video encoding and
 [workspace]
 resolver = "3"
 members = [
-  "cli",
+  "cli", "ffmpeg_command_builder",
   "ffmpeg_progress_monitor",
   "utils",
   "video_encoder",

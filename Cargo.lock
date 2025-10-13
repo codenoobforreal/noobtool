@@ -221,6 +221,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ffmpeg_command_builder"
+version = "0.1.0"
+dependencies = [
+ "utils",
+]
+
+[[package]]
 name = "ffmpeg_progress_monitor"
 version = "0.1.0"
 dependencies = [
@@ -561,8 +568,10 @@ name = "video_encoder"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "ffmpeg_command_builder",
  "ffmpeg_progress_monitor",
  "thiserror",
+ "utils",
  "video_metadata",
 ]
 

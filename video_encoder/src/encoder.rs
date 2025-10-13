@@ -1,22 +1,19 @@
-use crate::{Config, EncoderError, error::EncodeResult, preset::Preset};
+use crate::{Config, EncoderError, error::EncodeResult};
 use chrono::Local;
+use ffmpeg_command_builder::FfmpegCommandBuilder;
 use ffmpeg_progress_monitor::ProgressMonitor;
 use std::{
+    cmp::{Ordering, min},
     path::PathBuf,
     process::{Command, Stdio},
     time::Duration,
 };
-use video_metadata::{Metadata, Resolution};
-
-const BASE_ARGS: &[&str] = &["-hide_banner", "-v", "error", "-progress", "pipe:2", "-i"];
-const VIDEO_CODEC_ARGS: &[&str] = &["-c:v", "libx265", "-x265-params"];
-const AUDIO_ARGS: &[&str] = &["-f", "mp4", "-c:a", "copy"];
+use video_metadata::{Metadata, Orientation, Resolution};
 
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct Encoder {
     input: PathBuf,
-    // output: PathBuf,
-    preset: Preset,
+    // preset: Preset,
     crf: u8,
     fps: Option<u8>,
     scaled_width: Option<u16>,
@@ -31,29 +28,11 @@ impl Encoder {
             None
         };
 
-        let (crf, scaled_width, scaled_height) = {
-            if metadata.pixels() >= config.resolution().pixels() {
-                (
-                    resolution_to_crf(config.resolution()),
-                    if metadata.width() > metadata.height() {
-                        Some(config.resolution().width())
-                    } else {
-                        None
-                    },
-                    if metadata.width() < metadata.height() {
-                        Some(config.resolution().height())
-                    } else {
-                        None
-                    },
-                )
-            } else {
-                (resolution_to_crf(metadata.resolution()?), None, None)
-            }
-        };
+        let (crf, scaled_width, scaled_height) = Self::compute_scaling_params(config, metadata)?;
 
         Ok(Self {
             input: config.input().to_path_buf(),
-            preset: config.preset(),
+            // preset: config.preset(),
             crf,
             fps,
             scaled_width,
@@ -61,34 +40,74 @@ impl Encoder {
         })
     }
 
-    // ffmpeg -hide_banner -v error -progress pipe:2 -i input.mp4 -c:v libx265 -x265-params log-level=error:output-depth=10:crf=20 -pix_fmt yuv420p10le -preset medium -vf scale=1280:-2,fps=24 -f mp4 -c:a copy output.mp4
-    pub(crate) fn build_ffmpeg_args(&self) -> EncodeResult<Vec<String>> {
-        let mut args: Vec<String> = Vec::new();
+    /// 计算编码缩放参数（CRF和可选的缩放宽高）
+    ///
+    /// # 策略
+    /// - 分辨率下降时（元数据分辨率≥配置）：根据视频朝向调整宽高，并使用配置的CRF
+    /// - 分辨率上升时（元数据分辨率<配置）：不缩放宽高，使用元数据的CRF
+    fn compute_scaling_params(
+        config: &Config,
+        metadata: &Metadata,
+    ) -> EncodeResult<(u8, Option<u16>, Option<u16>)> {
+        match metadata.pixels().cmp(&config.resolution().pixels()) {
+            Ordering::Greater | Ordering::Equal => {
+                // 分辨率下降逻辑
+                let crf = resolution_to_crf(config.resolution());
+                let orientation = metadata.resolution()?.get_orientation();
+                let (scaled_width, scaled_height) = match orientation {
+                    Orientation::Landscape => {
+                        let width = config.resolution().get_primary_scale_dimension();
+                        (Some(width), None)
+                    }
+                    Orientation::Portrait => {
+                        let height = config.resolution().get_primary_scale_dimension();
+                        (None, Some(height))
+                    }
+                };
+                Ok((crf, scaled_width, scaled_height))
+            }
+            Ordering::Less => {
+                // 分辨率上升逻辑
+                let crf = resolution_to_crf(metadata.resolution()?);
+                Ok((crf, None, None))
+            }
+        }
+    }
 
-        args.extend(BASE_ARGS.iter().map(|&s| s.to_string()));
-
-        args.push(self.input.to_string_lossy().into_owned());
-
-        args.extend(VIDEO_CODEC_ARGS.iter().map(|&s| s.to_string()));
-
-        args.push(format!("log-level=error:crf={}", self.crf));
-
-        args.push("-preset".to_string());
-
-        args.push(format!("{}", self.preset));
-
-        // args.extend(["-pix_fmt", "yuv420p10le"].iter().map(|&s| s.to_string()));
+    /// 构建视频编码所需要的 `Command`
+    ///
+    /// # ffmpeg命令举例
+    /// ffmpeg -hide_banner -v error -progress pipe:2 -i input.mp4 -c:v libsvtav1 -preset 4 -crf 32 -g 240 -svtav1-params tune=0:film-grain=4 -vf scale=1280:-2,fps=24 -c:a copy output.mp4
+    ///
+    /// # 参考文档
+    /// https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Ffmpeg.md
+    /// https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md
+    pub(crate) fn build_ffmpeg_command(&self) -> EncodeResult<Command> {
+        let mut builder = FfmpegCommandBuilder::new()
+            .global_opt("-hide_banner -v error -progress pipe:2")
+            .input(self.input.to_string_lossy())
+            .output_opt("-c:v libsvtav1 -preset 4 -crf")
+            .output_opt(self.crf.to_string())
+            .output_opt(format!(
+                "-g {} -svtav1-params tune=0:film-grain=4",
+                self.gop()
+            ));
 
         if let Some(vf_str) = self.video_filter() {
-            args.push("-vf".to_string());
-            args.push(vf_str);
+            builder = builder.output_opt(format!("-vf {}", vf_str));
         }
 
-        args.extend(AUDIO_ARGS.iter().map(|&s| s.to_string()));
+        let command = builder.output(self.output()?.to_string_lossy()).build();
 
-        args.push(self.output()?.to_string_lossy().into_owned());
+        Ok(command)
+    }
 
-        Ok(args)
+    fn gop(&self) -> u16 {
+        match self.fps {
+            Some(fps) => min((fps as u16) * 10, 300),
+            // 这个值是 cli 的 fps 参数的默认值的 10 倍
+            None => 240,
+        }
     }
 
     fn video_filter(&self) -> Option<String> {
@@ -109,9 +128,7 @@ impl Encoder {
     }
 
     pub fn encode(&self, monitor: ProgressMonitor) -> EncodeResult<(Duration, u64)> {
-        let mut command = Command::new("ffmpeg");
-
-        command.args(self.build_ffmpeg_args()?);
+        let mut command = self.build_ffmpeg_command()?;
 
         let mut child = command.stderr(Stdio::piped()).spawn()?;
 
@@ -147,9 +164,9 @@ impl Encoder {
         self.input.clone()
     }
 
-    pub fn preset(&self) -> Preset {
-        self.preset
-    }
+    // pub fn preset(&self) -> Preset {
+    //     self.preset
+    // }
 
     pub fn crf(&self) -> u8 {
         self.crf
@@ -171,75 +188,96 @@ impl Encoder {
 /// https://handbrake.fr/docs/en/1.9.0/workflow/adjust-quality.html
 fn resolution_to_crf(resolution: Resolution) -> u8 {
     match resolution.pixels() {
-        p if p >= Resolution::Qhd.pixels() => 22,
-        p if p >= Resolution::Fhd.pixels() => 20,
-        p if p >= Resolution::Hd.pixels() => 19,
-        _ => 18,
+        p if p >= Resolution::Hd.pixels() => 25,
+        _ => 22,
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use utils::get_command_args;
 
     #[test]
-    fn downscale() -> EncodeResult<()> {
+    fn source_downscale_to_config() -> EncodeResult<()> {
+        // 源视频横屏，配置横屏
         let metadata = Metadata::new(1_920, 1_080, 30.0, 0.0, 0);
         let config = Config {
             input: "/path/to/video".into(),
             resolution: Resolution::Hd,
             fps: 24,
-            ..Config::default()
+            // ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
-        let args = encoder.build_ffmpeg_args()?.join(" ");
-        assert!(args.contains("crf=19"));
-        assert!(args.contains(&format!(
-            "-vf scale={}:-2,fps={}",
-            config.resolution.width(),
-            config.fps
-        )));
+        let command = encoder.build_ffmpeg_command()?;
+        let args = get_command_args(&command).to_string_lossy().to_string();
+        assert!(args.contains("-crf 25 -g 240"));
+        assert!(args.contains("-vf scale=1280:-2,fps=24"));
 
-        // 竖屏
+        // 源视频横屏，配置竖屏
+        let config = Config {
+            input: "/path/to/video".into(),
+            resolution: Resolution::Vhd,
+            fps: 24,
+            // ..Config::default()
+        };
+        let encoder = Encoder::new(&config, &metadata)?;
+        let command = encoder.build_ffmpeg_command()?;
+        let args = get_command_args(&command).to_string_lossy().to_string();
+        assert!(args.contains("-crf 25 -g 240"));
+        assert!(args.contains("-vf scale=1280:-2,fps=24"));
+
+        // 源视频竖屏，配置竖屏
         let metadata = Metadata::new(1_080, 1_920, 30.0, 0.0, 0);
         let encoder = Encoder::new(&config, &metadata)?;
-        let args = encoder.build_ffmpeg_args()?.join(" ");
-        assert!(
-            args.contains(&format!(
-                "-vf scale=-2:{},fps={}",
-                config.resolution.height(),
-                config.fps
-            )),
-            "{}",
-            args
-        );
+        let command = encoder.build_ffmpeg_command()?;
+        let args = get_command_args(&command).to_string_lossy().to_string();
+        assert!(args.contains("-crf 25 -g 240"));
+        assert!(args.contains("-vf scale=-2:1280,fps=24"), "{}", args);
+
+        // 源视频竖屏，配置竖屏
+        let config = Config {
+            input: "/path/to/video".into(),
+            resolution: Resolution::Hd,
+            fps: 24,
+            // ..Config::default()
+        };
+        let encoder = Encoder::new(&config, &metadata)?;
+        let command = encoder.build_ffmpeg_command()?;
+        let args = get_command_args(&command).to_string_lossy().to_string();
+        assert!(args.contains("-crf 25 -g 240"));
+        assert!(args.contains("-vf scale=-2:1280,fps=24"));
 
         Ok(())
     }
 
     #[test]
-    fn default() -> EncodeResult<()> {
+    fn source_use_default() -> EncodeResult<()> {
+        // 横屏
         let metadata = Metadata::new(1_920, 1_080, 24.0, 0.0, 0);
         let config = Config {
             input: "/path/to/video".into(),
-            fps: 30,
+            fps: 24,
             resolution: Resolution::Qhd,
-            ..Config::default()
+            // ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
-        let args = encoder.build_ffmpeg_args()?.join(" ");
-        assert!(args.contains("crf=20"));
+        let command = encoder.build_ffmpeg_command()?;
+        let args = get_command_args(&command).to_string_lossy().to_string();
+        assert!(args.contains("-crf 25 -g 240"), "{}", args);
         assert!(!args.contains("-vf"));
 
         // 竖屏
         let config = Config {
             input: "/path/to/video".into(),
             resolution: Resolution::Vqhd,
-            fps: 30,
-            ..Config::default()
+            fps: 24,
+            // ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
-        let args = encoder.build_ffmpeg_args()?.join(" ");
+        let command = encoder.build_ffmpeg_command()?;
+        let args = get_command_args(&command).to_string_lossy().to_string();
+        assert!(args.contains("-crf 25 -g 240"));
         assert!(!args.contains("-vf"));
 
         // 没有缩放但有fps限制
@@ -247,11 +285,13 @@ mod test {
             input: "/path/to/video".into(),
             resolution: Resolution::Vqhd,
             fps: 20,
-            ..Config::default()
+            // ..Config::default()
         };
         let encoder = Encoder::new(&config, &metadata)?;
-        let args = encoder.build_ffmpeg_args()?.join(" ");
-        assert!(args.contains(&format!("-vf fps={}", config.fps)));
+        let command = encoder.build_ffmpeg_command()?;
+        let args = get_command_args(&command).to_string_lossy().to_string();
+        assert!(args.contains("-crf 25 -g 200"));
+        assert!(args.contains("-vf fps=20"));
 
         Ok(())
     }

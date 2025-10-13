@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use utils::{format_file_size, scan_videos_from_paths};
-use video_encoder::{Config, Encoder, Preset};
+use video_encoder::{Config, Encoder};
 use video_metadata::{Metadata, Resolution};
 
 pub fn run(args: &EncodeVideoArgs) -> Result<bool> {
@@ -18,15 +18,15 @@ pub fn run(args: &EncodeVideoArgs) -> Result<bool> {
 
     Ok(batch_encode(
         &input_videos,
-        &args.preset,
+        // &args.preset,
         &args.resolution,
         args.fps,
     ))
 }
 
-fn batch_encode(videos: &[PathBuf], preset: &Preset, resolution: &Resolution, fps: u8) -> bool {
+fn batch_encode(videos: &[PathBuf], resolution: &Resolution, fps: u8) -> bool {
     videos.iter().fold(false, |mut has_error, video| {
-        if let Err(e) = process_encode(video, preset, resolution, fps) {
+        if let Err(e) = process_encode(video, resolution, fps) {
             log::error!("{e}");
             has_error = true;
         }
@@ -34,8 +34,8 @@ fn batch_encode(videos: &[PathBuf], preset: &Preset, resolution: &Resolution, fp
     })
 }
 
-fn process_encode(input: &Path, preset: &Preset, resolution: &Resolution, fps: u8) -> Result<()> {
-    let config = Config::init(PathBuf::from(input), *resolution, *preset, fps);
+fn process_encode(input: &Path, resolution: &Resolution, fps: u8) -> Result<()> {
+    let config = Config::init(PathBuf::from(input), *resolution, fps);
     let metadata = Metadata::retrive(input)?;
     let encoder = Encoder::new(&config, &metadata)?;
     let stat = encoder.encode(ProgressMonitor::new(
